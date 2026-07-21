@@ -14,6 +14,9 @@ venv/
 preds_*.jsonl
 eval_results*.txt
 outputs/
+preds/
+splits/
+configs/mlx.yaml
 .hf-cache/
 
 # Large data (kept outside the repo, in ../Shroom-Vision)
