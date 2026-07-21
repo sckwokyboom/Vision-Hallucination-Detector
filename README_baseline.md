@@ -73,7 +73,42 @@ Edit `configs/base.yaml`:
 - `max_pixels` — image resolution cap; raise for OCR / counting.
 - `model_id` — `Qwen/Qwen2.5-VL-7B-Instruct` → `32B`/`72B` as dev IoU justifies.
 
-## Status
+## Mac self-consistency workflow
 
-Core + harness: done, tested, Milestone 1 verified on real dev. VLM backends: implemented; their
-end-to-end smoke run (cluster `hf`, Mac `mlx`) and the full dev prediction run are the next steps.
+```bash
+# n>1 sampling, saving raw outputs so tau/alignment can be swept offline (no re-inference)
+python scripts/mlx_predict.py --model_id mlx-community/Qwen2.5-VL-7B-Instruct-4bit \
+  --input splits/dev.en.jsonl --image_dir ../Shroom-Vision/images \
+  --output preds/dev.en.jsonl --n_samples 5 --temperature 0.7 --max_side 768 --save_raw
+python scripts/sweep_tau.py --gold splits/dev.en.jsonl --pred preds/dev.en.jsonl
+```
+
+`--max_side` downscales images (fixes Qwen2.5-VL degenerate "!!!!" output on large images).
+`sweep_tau.py` re-aggregates the saved raw samples across a tau grid instantly.
+
+## First-pass results (Mac, Qwen2.5-VL-7B-4bit via MLX, ~3–5 s/item on M4 Pro)
+
+Representative random 100-item en-dev sample (floor 0.210, i.e. 21% clean — matches full dev 0.212):
+
+| config | Char-IoU | vs floor |
+|--------|----------|----------|
+| predict-nothing (floor) | 0.210 | — |
+| n=5, tau=0.20 | 0.152 | −0.058 |
+| n=5, tau=0.50 | 0.185 | −0.025 |
+| **n=5, tau=0.70 (best)** | **0.200** | −0.010 |
+
+**Conclusion:** tuned zero-shot 7B-4bit essentially ties the predict-nothing floor; it does not beat it.
+Self-consistency + high tau gives a real gain (0.152 → 0.200) but only offsets the over-prediction
+penalty. The ceiling is the small quantized model's recall/precision on this clean-heavy task.
+
+Two empirical must-dos discovered here: (1) resize images (`--max_side`), or Qwen2.5-VL emits "!!!!";
+(2) a **skeptical** prompt — the original permissive prompt made even 7B return `[]` everywhere.
+
+## Status & next levers
+
+Core + harness: done, tested (39 unit tests), Milestone 1 verified, first-pass Mac baseline measured.
+To clear the floor, in rough order of expected payoff:
+- **Stronger model on the A100 cluster** (`hf` backend, Qwen2.5-VL-32B/72B or unquantized 7B).
+- **Fine-tune a token classifier** on the 15k labelled train set (design §4 Method C).
+- **Claim-level verification** (design §4 Method B) to raise recall.
+- The cluster `hf` smoke run + full multi-language test prediction remain to be executed on the cluster.
