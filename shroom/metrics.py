@@ -1,4 +1,8 @@
+from collections import defaultdict
+
 import numpy as np
+
+from .predict import CATEGORIES
 
 
 def _char_set(spans, resp_len):
@@ -76,3 +80,60 @@ def trivial_baselines(items):
     n = max(1, len(items))
     return {"predict_nothing_iou": sum(nothing) / n,
             "predict_all_iou": sum(allh) / n}
+
+
+def _pred_char_probs(pred_rec, resp_len):
+    """Per-char pred prob: use stored char_probs if present, else reconstruct from spans."""
+    cp = pred_rec.get("char_probs")
+    if cp:
+        arr = list(cp)[:resp_len]
+        arr += [0.0] * (resp_len - len(arr))
+        return arr
+    arr = [0.0] * resp_len
+    for sp in pred_rec.get("pred_labels", []):
+        a = max(0, min(int(sp["start"]), resp_len))
+        b = max(0, min(int(sp["end"]), resp_len))
+        pr = float(sp.get("prob", 1.0))
+        for i in range(a, b):
+            if pr > arr[i]:
+                arr[i] = pr
+    return arr
+
+
+def evaluate(gold_items, pred_by_id):
+    """Per-language report: mean IoU, per-label IoU, calibration, trivial baselines."""
+    by_lang = defaultdict(list)
+    for it in gold_items:
+        by_lang[it.language].append(it)
+
+    report = {}
+    for lang, items in by_lang.items():
+        ious, gp_all, pp_all = [], [], []
+        label_inter = defaultdict(int)
+        label_union = defaultdict(int)
+        for it in items:
+            rl = len(it.response)
+            pred = pred_by_id.get(it.id, {"pred_labels": []})
+            pred_spans = pred.get("pred_labels", [])
+            ious.append(char_iou(it.labels, pred_spans, rl))
+            gp_all.extend(gold_char_probs(it.labels, rl))
+            pp_all.extend(_pred_char_probs(pred, rl))
+            for lab in CATEGORIES:
+                g = _char_set([s for s in it.labels if s.get("label") == lab], rl)
+                p = _char_set([s for s in pred_spans if s.get("label") == lab], rl)
+                label_inter[lab] += len(g & p)
+                label_union[lab] += len(g | p)
+        tb = trivial_baselines(items)
+        cal = calibration(gp_all, pp_all)
+        per_label = {lab: (label_inter[lab] / label_union[lab] if label_union[lab] else 1.0)
+                     for lab in CATEGORIES}
+        report[lang] = {
+            "n": len(items),
+            "iou": sum(ious) / len(ious),
+            "per_label_iou": per_label,
+            "pearson": cal["pearson"],
+            "spearman": cal["spearman"],
+            "predict_nothing_iou": tb["predict_nothing_iou"],
+            "predict_all_iou": tb["predict_all_iou"],
+        }
+    return report
