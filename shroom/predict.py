@@ -6,18 +6,22 @@ from .aggregate import aggregate
 CATEGORIES = ["invention", "mischaracterization", "OCR", "miscounting", "other"]
 
 PROMPT_TEMPLATE = (
-    "Look at the image. A user asked a question about it and a model produced the answer below.\n"
-    "Find every span of the answer that is a hallucination — content NOT supported by the image.\n"
-    "Classify each span into exactly one category:\n"
-    "  - invention: entities, objects, properties or events not present in the image\n"
-    "  - mischaracterization: incorrect description of content that IS visible\n"
+    "You are a strict fact-checker. The IMAGE is the ground truth.\n"
+    "Below is a QUESTION about the image and an ANSWER produced by another AI model.\n"
+    "The answer OFTEN contains hallucinations: content NOT supported by — or contradicting — "
+    "the image. Be skeptical: check every claim in the answer against the image and flag each part "
+    "the image does not support.\n"
+    "Categories:\n"
+    "  - invention: objects, properties, details or events not present in the image\n"
+    "  - mischaracterization: incorrect description of something that IS visible\n"
     "  - OCR: misreading of text visible in the image\n"
     "  - miscounting: wrong quantity of visible items\n"
     "  - other: a hallucination that fits none of the above\n\n"
-    "Output ONLY a JSON array. Each element: "
-    '{"phrase": "<exact substring copied verbatim from the answer>", "label": "<category>"}. '
-    "Copy the phrase EXACTLY, character for character. "
-    "If the answer is fully correct, output []."
+    "For each hallucination, copy the offending text VERBATIM from the answer (exact characters, "
+    "spelling and punctuation). Prefer the shortest phrase that captures the error, but flagging a "
+    "slightly longer span is better than missing a hallucination.\n"
+    'Return ONLY a JSON array; each element {"phrase": "<verbatim substring>", "label": "<category>"}. '
+    "Only if every claim is fully supported by the image, return []."
 )
 
 
