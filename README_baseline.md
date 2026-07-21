@@ -114,16 +114,29 @@ Two empirical must-dos discovered here: (1) resize images (`--max_side`), or Qwe
 | Calibration (Pearson) | ~0 / negative | **+0.144** |
 | Failure mode | under-fires (defaults "clean") | over-fires (flags all incl. clean) |
 
-`scripts/mlx_gate.py` + `scripts/sweep_gate.py` implement a two-stage **clean-gate** (a YES/NO
-"is anything hallucinated?" question that, if NO, forces empty spans to protect the ~21% clean items).
-**It does not help** with either model: neither can tell clean from dirty (Qwen says NO on 19/21 clean
-answers, Gemma says YES on 19/21). Self-consistency also can't rescue Gemma — its clean-item false
-positives are *consistent* (5/5 votes), not noisy, so a tau threshold won't prune them.
+A two-stage **clean-gate** (`scripts/mlx_gate.py` + `sweep_gate.py`: a YES/NO "is anything
+hallucinated?" question that forces empty spans on NO) **does not help** either model: neither tells
+clean from dirty as a global yes/no (Qwen says NO on 19/21 clean answers, Gemma says YES on 19/21).
 
-**Takeaway:** on the IoU metric the predict-nothing floor is unbeaten by any zero-shot small quantized
-model + post-processing here, because the models don't discriminate clean vs dirty. Gemma is the
-better base though — real recall, tight spans, and a genuinely positive calibration signal (the 2nd
-official metric). Clearing the IoU floor needs a stronger detector (A100 32B/72B) or fine-tuning.
+**Claim-level (Method B — `scripts/mlx_claim.py` + `sweep_claim.py`) is the first approach to beat
+the floor.** Split the answer into sentence claims and ask Gemma per claim "is this supported by the
+image?" with a filler-aware skeptical prompt. Result on the representative 100 (floor 0.210):
+
+| approach | Char-IoU | vs floor | calibration (Pearson) |
+|----------|----------|----------|-----------------------|
+| Qwen extraction (n=5, tau=0.7) | 0.200 | −0.010 | ~0 |
+| Gemma extraction | 0.187 | −0.023 | +0.144 |
+| Gemma + clean-gate | 0.202 | −0.008 | +0.144 |
+| **Gemma claim-level** | **0.2147** | **+0.005** | +0.109 |
+
+Claim-level wins by protecting clean items: 14/21 clean answers correctly get `[]` (vs 0/21 for
+extraction), while catching 35/79 dirty. Its ceiling is (a) recall — 44/79 dirty missed (subtle
+hallucinations), and (b) coarse spans — whole sentences are marked, but gold spans are short words.
+
+**Takeaway:** the predict-nothing floor is very strong; only claim-level nudges above it (+0.005),
+by using per-claim judgment to protect clean items. Gemma is the better base on both metrics.
+Substantial gains need a stronger detector (A100 32B/72B) or fine-tuning, plus tighter spans
+(e.g. claim-gate → extract *within* each flagged sentence).
 
 ## Status & next levers
 
