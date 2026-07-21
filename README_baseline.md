@@ -104,6 +104,27 @@ penalty. The ceiling is the small quantized model's recall/precision on this cle
 Two empirical must-dos discovered here: (1) resize images (`--max_side`), or Qwen2.5-VL emits "!!!!";
 (2) a **skeptical** prompt — the original permissive prompt made even 7B return `[]` everywhere.
 
+## Model comparison & clean-gate (representative 100 en-dev, floor 0.210)
+
+| | Qwen2.5-VL-7B-4bit | Gemma-3-12b-4bit |
+|--------|--------------------|-------------------|
+| Char-IoU (best) | 0.200 (n=5, tau=0.7) | 0.202 (n=1 + gate) |
+| Recall (dirty items flagged) | low (~24% fire) | **76 / 79** |
+| Median predicted span | 94 chars | **29 chars** |
+| Calibration (Pearson) | ~0 / negative | **+0.144** |
+| Failure mode | under-fires (defaults "clean") | over-fires (flags all incl. clean) |
+
+`scripts/mlx_gate.py` + `scripts/sweep_gate.py` implement a two-stage **clean-gate** (a YES/NO
+"is anything hallucinated?" question that, if NO, forces empty spans to protect the ~21% clean items).
+**It does not help** with either model: neither can tell clean from dirty (Qwen says NO on 19/21 clean
+answers, Gemma says YES on 19/21). Self-consistency also can't rescue Gemma — its clean-item false
+positives are *consistent* (5/5 votes), not noisy, so a tau threshold won't prune them.
+
+**Takeaway:** on the IoU metric the predict-nothing floor is unbeaten by any zero-shot small quantized
+model + post-processing here, because the models don't discriminate clean vs dirty. Gemma is the
+better base though — real recall, tight spans, and a genuinely positive calibration signal (the 2nd
+official metric). Clearing the IoU floor needs a stronger detector (A100 32B/72B) or fine-tuning.
+
 ## Status & next levers
 
 Core + harness: done, tested (39 unit tests), Milestone 1 verified, first-pass Mac baseline measured.
