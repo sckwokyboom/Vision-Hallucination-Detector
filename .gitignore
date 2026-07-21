@@ -1,0 +1,20 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Model / run artifacts
+*.pt
+*.safetensors
+preds_*.jsonl
+eval_results*.txt
+outputs/
+.hf-cache/
+
+# Large data (kept outside the repo, in ../Shroom-Vision)
+shroom-visions-images*.tar.gz
