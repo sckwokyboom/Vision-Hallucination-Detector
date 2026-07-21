@@ -33,11 +33,13 @@ def _find_all(haystack, needle):
     return spans
 
 
-def phrase_to_spans(phrase, response, fuzzy_ratio=0.8):
+def phrase_to_spans(phrase, response, fuzzy_ratio=0.8, fuzzy_len_cap=4.0):
     """Locate `phrase` inside `response`, returning list of (start, end) char spans.
 
     Tries exact (all occurrences), then whitespace/markdown-normalized, then fuzzy.
-    Returns [] if nothing acceptable is found.
+    A fuzzy match whose window is longer than `fuzzy_len_cap` times the phrase is
+    rejected (guards against a paraphrase mapping to a huge span). Returns [] if
+    nothing acceptable is found.
     """
     phrase = phrase.strip()
     if not phrase:
@@ -65,5 +67,6 @@ def phrase_to_spans(phrase, response, fuzzy_ratio=0.8):
         if blocks and matched >= fuzzy_ratio * len(nphr):
             first = blocks[0].a
             last = blocks[-1].a + blocks[-1].size - 1
-            return [(rmap[first], rmap[last] + 1)]
+            if (last - first + 1) <= fuzzy_len_cap * len(nphr):
+                return [(rmap[first], rmap[last] + 1)]
     return []

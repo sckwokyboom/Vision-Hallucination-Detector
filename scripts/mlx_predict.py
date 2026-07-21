@@ -37,6 +37,8 @@ def main():
     ap.add_argument("--max_side", type=int, default=0,
                     help="If >0, downscale each image so its longest side <= max_side (RGB temp copy).")
     ap.add_argument("--debug", type=int, default=0)
+    ap.add_argument("--save_raw", action="store_true",
+                    help="Store the N raw model outputs per item (for offline tau/align sweeps).")
     args = ap.parse_args()
 
     tmpdir = tempfile.mkdtemp(prefix="mlx_img_") if args.max_side else None
@@ -89,6 +91,8 @@ def main():
             spans, per_char = aggregate(samples, it.response, tau=args.tau)
             rec["pred_labels"] = spans
             rec["char_probs"] = [round(p, 3) for p in per_char]
+            if args.save_raw:
+                rec["raw_samples"] = raws
             out.write(json.dumps(rec, ensure_ascii=False) + "\n")
             out.flush()
             n_done += 1
