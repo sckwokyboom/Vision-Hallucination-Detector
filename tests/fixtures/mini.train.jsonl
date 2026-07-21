@@ -1,0 +1,3 @@
+{"id":"t-1","language":"en","split":"train","prompt":"Does this desk have legs?","image_name":"desk.jpg","response":"No, it has a hidden bracket on the ceiling.","labels":[{"start":13,"end":19,"prob":0.3333,"label":"mischaracterization"},{"start":35,"end":43,"prob":0.6667,"label":"mischaracterization"}]}
+{"id":"t-2","language":"en","split":"train","prompt":"How many cats?","image_name":"cat.jpg","response":"There are three cats.","labels":[{"start":10,"end":15,"prob":1.0,"label":"miscounting"}]}
+{"id":"t-3","language":"en","split":"train","prompt":"What color?","image_name":"desk.jpg","response":"It is blue.","labels":[]}
