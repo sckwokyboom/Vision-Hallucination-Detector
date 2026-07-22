@@ -133,10 +133,37 @@ Claim-level wins by protecting clean items: 14/21 clean answers correctly get `[
 extraction), while catching 35/79 dirty. Its ceiling is (a) recall — 44/79 dirty missed (subtle
 hallucinations), and (b) coarse spans — whole sentences are marked, but gold spans are short words.
 
-**Takeaway:** the predict-nothing floor is very strong; only claim-level nudges above it (+0.005),
-by using per-claim judgment to protect clean items. Gemma is the better base on both metrics.
-Substantial gains need a stronger detector (A100 32B/72B) or fine-tuning, plus tighter spans
-(e.g. claim-gate → extract *within* each flagged sentence).
+## Best Mac solution: HYBRID E (`scripts/hybrid_eval.py`)
+
+Combine the two: use claim-level as an **item-level clean-gate** (predict `[]` when it flags no claim)
+and take **Gemma's extraction spans** on the flagged (dirty) items. One model (Gemma-12b), two passes.
+On **200** representative en-dev items (42 clean, floor 0.210):
+
+| system | Char-IoU | Pearson | clean protected |
+|--------|----------|---------|-----------------|
+| predict-nothing (floor) | 0.2100 | 0.000 | 42/42 |
+| predict-everything | 0.1607 | 0.000 | 0/42 |
+| Gemma extraction | 0.1907 | 0.125 | 2/42 |
+| claim-level | 0.2493 | 0.163 | 33/42 |
+| **HYBRID E** | **0.2728** | **0.151** | 33/42 |
+
+HYBRID E beats predict-nothing by **+0.063** mean per-item IoU (95% bootstrap CI **[+0.018, +0.106]**,
+significant; better on 64 items, worse on 9). It wins on **both** official metrics at once: IoU well
+above the floor *and* a positive calibration signal.
+
+```bash
+# two Gemma passes over the same items, then the hybrid:
+python scripts/mlx_predict.py --model_id mlx-community/gemma-3-12b-it-4bit --input splits/dev.en.jsonl \
+  --image_dir ../Shroom-Vision/images --output preds/gemma_extr.jsonl --max_side 768 --save_raw
+python scripts/mlx_claim.py --model_id mlx-community/gemma-3-12b-it-4bit --input splits/dev.en.jsonl \
+  --image_dir ../Shroom-Vision/images --output preds/gemma_claim.jsonl --max_side 768
+python scripts/hybrid_eval.py --gold splits/dev.en.jsonl \
+  --extraction preds/gemma_extr.jsonl --claim preds/gemma_claim.jsonl --out preds/hybrid.jsonl
+```
+
+**Takeaway:** on Mac, HYBRID E (claim clean-gate + Gemma spans) is the working baseline — significantly
+above the predict-nothing floor and positively calibrated. It still misses subtle hallucinations
+(recall-bound); further gains need a stronger detector (A100 32B/72B) or fine-tuning.
 
 ## Status & next levers
 
