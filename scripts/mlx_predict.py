@@ -14,7 +14,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from shroom.data import load_jsonl              # noqa: E402
-from shroom.predict import build_prompt, parse_output  # noqa: E402
+from shroom.predict import build_prompt, build_prompt_original, parse_output  # noqa: E402
 from shroom.aggregate import aggregate          # noqa: E402
 
 from PIL import Image                           # noqa: E402
@@ -39,7 +39,11 @@ def main():
     ap.add_argument("--debug", type=int, default=0)
     ap.add_argument("--save_raw", action="store_true",
                     help="Store the N raw model outputs per item (for offline tau/align sweeps).")
+    ap.add_argument("--prompt_style", choices=["skeptical", "original"], default="skeptical",
+                    help="'original' = the starter label_with_gemma.py prompt (3 categories).")
     args = ap.parse_args()
+
+    prompt_fn = build_prompt_original if args.prompt_style == "original" else build_prompt
 
     tmpdir = tempfile.mkdtemp(prefix="mlx_img_") if args.max_side else None
 
@@ -81,7 +85,7 @@ def main():
                 rec.update(pred_labels=[], char_probs=[], error="image_missing")
                 out.write(json.dumps(rec, ensure_ascii=False) + "\n")
                 continue
-            text = build_prompt(it.prompt, it.response)
+            text = prompt_fn(it.prompt, it.response)
             use_path = resolve_image(img_path)
             raws = [gen_once(use_path, text) for _ in range(args.n_samples)]
             if args.debug and idx < args.debug:

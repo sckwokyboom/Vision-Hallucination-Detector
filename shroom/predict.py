@@ -32,6 +32,28 @@ def build_prompt(prompt, response):
             "Output:")
 
 
+# Original starter prompt (label_with_gemma.py) — 3 of 5 categories, permissive framing.
+# Kept for measuring the starter solution on the same benchmark.
+LABELING_PROMPT_ORIGINAL = (
+    "Look at the image. A user asked a question about it and a model produced the answer below. "
+    "Your task: check if the answer contains hallucinations (factual errors, miscounting, "
+    "or invented details inconsistent with what's visible in the image).\n\n"
+    "Output a JSON array of hallucinated phrases found in the answer. "
+    'Each entry: {"phrase": "exact substring from the answer", '
+    '"label": "mischaracterization"|"miscounting"|"invention"}. '
+    "Quote the phrase EXACTLY as it appears — copy-paste characters. "
+    "If the answer is fully correct, output [].\n"
+    "Output ONLY the JSON array, nothing else."
+)
+
+
+def build_prompt_original(prompt, response):
+    return (f"{LABELING_PROMPT_ORIGINAL}\n\n"
+            f'Question: "{prompt}"\n'
+            f'Answer: "{response}"\n'
+            "Output:")
+
+
 def _coerce(parsed):
     if not isinstance(parsed, list):
         return None

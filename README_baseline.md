@@ -142,6 +142,7 @@ floor 0.210). `n5` = 5-sample self-consistency (graded per-char probs); `n1` = g
 |--------|----------|---------|--------|------------|------------------|
 | predict-nothing | 0.210 | 0.500 | 0.153 | 0.000 | 0.500 |
 | predict-everything | 0.161 | 0.500 | 0.153 | 0.000 | 0.500 |
+| starter (Qwen2-VL-2B, orig prompt) | 0.199 | 0.498 | 0.153 | −0.020 | 0.505 |
 | Qwen2.5-VL-7B `n5` | 0.205 | 0.484 | 0.151 | −0.010 | 0.516 |
 | Gemma-3-12b `n1` | 0.191 | 0.576 | 0.180 | 0.125 | 0.553 |
 | Gemma-3-12b `n5` | 0.189 | **0.604** | 0.193 | 0.142 | 0.555 |
@@ -155,8 +156,13 @@ items. **HYBRID-n5 is the best overall**: it wins span_iou / pr_auc / calib_corr
 (0.600 vs 0.604). Self-consistency both lifts the ranking metrics (Gemma roc_auc 0.576→0.604) and,
 fed into the hybrid, removes the AUC penalty the n1 hybrid paid (roc_auc 0.569→0.600).
 
+The original starter (`label_with_gemma.py`: Qwen2-VL-2B + a permissive 3-category prompt, run via
+`mlx_predict.py --prompt_style original`) is the baseline all of this improves on: span_iou 0.199
+(*below* the predict-nothing floor — its few predictions hurt more than help) and ~0.5 on every AUC
+metric (no discrimination signal). HYBRID-n5 lifts that to 0.273 span_iou and 0.600 roc_auc.
+
 Notes: only span_iou has a strong predict-nothing floor — on all AUC metrics the trivial baselines
-score 0.500. Qwen is a poor detector here (roc_auc < 0.5). claim-level leads class_roc / OCR.
+score 0.500. Qwen2.5-VL-7B is a poor detector here (roc_auc < 0.5). claim-level leads class_roc / OCR.
 
 ```bash
 # two Gemma passes over the same items (n=5 for graded probs), then the hybrid:
