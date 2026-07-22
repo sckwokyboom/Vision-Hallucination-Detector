@@ -133,37 +133,45 @@ Claim-level wins by protecting clean items: 14/21 clean answers correctly get `[
 extraction), while catching 35/79 dirty. Its ceiling is (a) recall — 44/79 dirty missed (subtle
 hallucinations), and (b) coarse spans — whole sentences are marked, but gold spans are short words.
 
-## Best Mac solution: HYBRID E (`scripts/hybrid_eval.py`)
+## Best Mac solution: HYBRID (claim clean-gate + Gemma self-consistency spans)
 
-Combine the two: use claim-level as an **item-level clean-gate** (predict `[]` when it flags no claim)
-and take **Gemma's extraction spans** on the flagged (dirty) items. One model (Gemma-12b), two passes.
-On **200** representative en-dev items (42 clean, floor 0.210):
+Full metric suite (`scripts/official_metrics.py`) on **200** representative en-dev items (42 clean,
+floor 0.210). `n5` = 5-sample self-consistency (graded per-char probs); `n1` = greedy.
 
-| system | Char-IoU | Pearson | clean protected |
-|--------|----------|---------|-----------------|
-| predict-nothing (floor) | 0.2100 | 0.000 | 42/42 |
-| predict-everything | 0.1607 | 0.000 | 0/42 |
-| Gemma extraction | 0.1907 | 0.125 | 2/42 |
-| claim-level | 0.2493 | 0.163 | 33/42 |
-| **HYBRID E** | **0.2728** | **0.151** | 33/42 |
+| system | span_iou | roc_auc | pr_auc | calib_corr | class_roc(macro) |
+|--------|----------|---------|--------|------------|------------------|
+| predict-nothing | 0.210 | 0.500 | 0.153 | 0.000 | 0.500 |
+| predict-everything | 0.161 | 0.500 | 0.153 | 0.000 | 0.500 |
+| Qwen2.5-VL-7B `n5` | 0.205 | 0.484 | 0.151 | −0.010 | 0.516 |
+| Gemma-3-12b `n1` | 0.191 | 0.576 | 0.180 | 0.125 | 0.553 |
+| Gemma-3-12b `n5` | 0.189 | **0.604** | 0.193 | 0.142 | 0.555 |
+| claim-level | 0.249 | 0.576 | 0.193 | 0.163 | **0.559** |
+| HYBRID `n1` | 0.273 | 0.569 | 0.186 | 0.151 | 0.523 |
+| **HYBRID `n5`** | **0.273** | 0.600 | **0.199** | **0.164** | 0.527 |
 
-HYBRID E beats predict-nothing by **+0.063** mean per-item IoU (95% bootstrap CI **[+0.018, +0.106]**,
-significant; better on 64 items, worse on 9). It wins on **both** official metrics at once: IoU well
-above the floor *and* a positive calibration signal.
+The HYBRID = one model (Gemma-3-12b), two passes: claim-level as an **item-level clean-gate** (predict
+`[]` when it flags no claim) + **extraction spans** (self-consistency, graded probs) on the flagged
+items. **HYBRID-n5 is the best overall**: it wins span_iou / pr_auc / calib_corr and near-ties roc_auc
+(0.600 vs 0.604). Self-consistency both lifts the ranking metrics (Gemma roc_auc 0.576→0.604) and,
+fed into the hybrid, removes the AUC penalty the n1 hybrid paid (roc_auc 0.569→0.600).
+
+Notes: only span_iou has a strong predict-nothing floor — on all AUC metrics the trivial baselines
+score 0.500. Qwen is a poor detector here (roc_auc < 0.5). claim-level leads class_roc / OCR.
 
 ```bash
-# two Gemma passes over the same items, then the hybrid:
+# two Gemma passes over the same items (n=5 for graded probs), then the hybrid:
 python scripts/mlx_predict.py --model_id mlx-community/gemma-3-12b-it-4bit --input splits/dev.en.jsonl \
-  --image_dir ../Shroom-Vision/images --output preds/gemma_extr.jsonl --max_side 768 --save_raw
+  --image_dir ../Shroom-Vision/images --output preds/gemma_extr.jsonl --n_samples 5 --temperature 0.7 --max_side 768 --save_raw
 python scripts/mlx_claim.py --model_id mlx-community/gemma-3-12b-it-4bit --input splits/dev.en.jsonl \
   --image_dir ../Shroom-Vision/images --output preds/gemma_claim.jsonl --max_side 768
 python scripts/hybrid_eval.py --gold splits/dev.en.jsonl \
   --extraction preds/gemma_extr.jsonl --claim preds/gemma_claim.jsonl --out preds/hybrid.jsonl
+python scripts/official_metrics.py --gold splits/dev.en.jsonl --pred hybrid=preds/hybrid.jsonl
 ```
 
-**Takeaway:** on Mac, HYBRID E (claim clean-gate + Gemma spans) is the working baseline — significantly
-above the predict-nothing floor and positively calibrated. It still misses subtle hallucinations
-(recall-bound); further gains need a stronger detector (A100 32B/72B) or fine-tuning.
+**Takeaway:** on Mac, HYBRID-n5 wins the full metric suite (span_iou + all AUC metrics simultaneously).
+The ceiling is detector recall — the Gemma-n5 locator still misses ~39% of gold spans (span-detection
+recall 0.61). Closing it needs a stronger / fine-tuned detector (A100 32B/72B).
 
 ## Status & next levers
 
