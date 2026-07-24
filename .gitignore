@@ -1,0 +1,27 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Model / run artifacts
+*.pt
+*.safetensors
+outputs/
+preds/
+splits/
+results/*.jsonl
+configs/mlx.yaml
+.hf-cache/
+
+# Dataset — obtain separately, see data/README.md (do NOT commit; closed test set / dataset terms)
+Shroom-Vision/
+data/distrib/
+data/images/
+*.tar.gz
+*.zip
