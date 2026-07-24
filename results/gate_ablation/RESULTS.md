@@ -74,8 +74,27 @@ few dirty items extreme-negative scores (−25) below the most-negative clean (�
 false negatives collapse high-recall specificity. Greedy points and score-gap not cross-model
 comparable.
 
-**Honest status:** capacity is *evidence in favor* (86%), not confirmed. 26B controls
-(shuffle/textonly) running to isolate whether the AUC gain is visual or linguistic.
+**Honest status:** capacity is *evidence in favor* (86%), not confirmed.
+
+### 5b. 26B visual controls (ROC-AUC, strat-100)
+
+| condition | 26B | 12B |
+|---|---|---|
+| correct image | 0.738 | 0.694 |
+| shuffled image | 0.524 (≈chance) | 0.629 |
+| text-only | 0.610 | 0.566 |
+
+- **Visual lift (correct − text-only) is identical: +0.128 for both** ⇒ the larger model did NOT
+  add visual grounding; the image contributes the same ~0.13 AUC regardless of size.
+- 26B's overall edge (+0.044) comes entirely from a **higher text-only floor** (0.610 vs 0.566) —
+  more capacity improved *linguistic* reasoning, not *visual* discrimination.
+- A **wrong** image collapses 26B to chance (0.524) but not 12B (0.629): 26B conditions on the
+  image more genuinely; 12B leans more on text.
+- Caveat: n=100 (21 clean), wide CIs — suggestive, not significant.
+
+**Takeaway:** the bottleneck is *visual discrimination*, and it did not improve with model size —
+"needs more cognition" is only half-right. The lever is stronger visual grounding (task
+fine-tuning / a stronger vision stack), not more text capacity alone.
 
 ## Reproduce
 
