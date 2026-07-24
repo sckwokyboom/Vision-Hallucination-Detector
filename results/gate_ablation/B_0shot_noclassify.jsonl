@@ -1,0 +1,100 @@
+{"id": "train-en-2019", "gold_dirty": true, "gold_types": ["OCR", "invention", "mischaracterization"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-9645", "gold_dirty": true, "gold_types": ["OCR", "invention", "mischaracterization"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-9663", "gold_dirty": true, "gold_types": ["OCR", "invention", "mischaracterization"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-9644", "gold_dirty": true, "gold_types": ["OCR", "invention", "mischaracterization"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-9863", "gold_dirty": true, "gold_types": ["OCR", "invention", "mischaracterization"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-9665", "gold_dirty": true, "gold_types": ["OCR", "invention"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-9643", "gold_dirty": true, "gold_types": ["OCR", "invention"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-2707", "gold_dirty": true, "gold_types": ["OCR", "mischaracterization"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-2492", "gold_dirty": true, "gold_types": ["OCR", "other"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-9750", "gold_dirty": true, "gold_types": ["OCR", "invention"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-2138", "gold_dirty": true, "gold_types": ["OCR"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-9697", "gold_dirty": true, "gold_types": ["OCR", "mischaracterization"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-1125", "gold_dirty": true, "gold_types": ["invention", "other"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-1324", "gold_dirty": true, "gold_types": ["other"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-2524", "gold_dirty": true, "gold_types": ["invention", "other"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-11058", "gold_dirty": true, "gold_types": ["invention", "mischaracterization", "other"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-9835", "gold_dirty": true, "gold_types": ["mischaracterization", "other"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-1296", "gold_dirty": true, "gold_types": ["invention", "mischaracterization", "other"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-1059", "gold_dirty": true, "gold_types": ["other"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-10515", "gold_dirty": true, "gold_types": ["invention", "other"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-11021", "gold_dirty": true, "gold_types": ["invention", "mischaracterization", "other"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-1785", "gold_dirty": true, "gold_types": ["other"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-11478", "gold_dirty": true, "gold_types": ["invention", "mischaracterization", "miscounting", "other"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-10276", "gold_dirty": true, "gold_types": ["other"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-11615", "gold_dirty": true, "gold_types": ["invention", "mischaracterization", "miscounting"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-10822", "gold_dirty": true, "gold_types": ["mischaracterization", "miscounting"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-1060", "gold_dirty": true, "gold_types": ["mischaracterization", "miscounting"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-10032", "gold_dirty": true, "gold_types": ["invention", "mischaracterization", "miscounting"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-9946", "gold_dirty": true, "gold_types": ["mischaracterization", "miscounting", "other"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-11506", "gold_dirty": true, "gold_types": ["invention", "mischaracterization", "miscounting"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-11511", "gold_dirty": true, "gold_types": ["invention", "mischaracterization", "miscounting"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-11564", "gold_dirty": true, "gold_types": ["invention", "mischaracterization", "miscounting"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-799", "gold_dirty": true, "gold_types": ["miscounting"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-11833", "gold_dirty": true, "gold_types": ["invention", "mischaracterization", "miscounting"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-11908", "gold_dirty": true, "gold_types": ["OCR", "mischaracterization", "miscounting"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-9944", "gold_dirty": true, "gold_types": ["miscounting"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-1709", "gold_dirty": true, "gold_types": ["invention", "mischaracterization", "miscounting"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-10036", "gold_dirty": true, "gold_types": ["invention", "miscounting"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-11550", "gold_dirty": false, "gold_types": [], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-2273", "gold_dirty": false, "gold_types": [], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-10641", "gold_dirty": false, "gold_types": [], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-10157", "gold_dirty": false, "gold_types": [], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-10071", "gold_dirty": false, "gold_types": [], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-10747", "gold_dirty": false, "gold_types": [], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-1952", "gold_dirty": false, "gold_types": [], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-752", "gold_dirty": false, "gold_types": [], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-9702", "gold_dirty": false, "gold_types": [], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-1502", "gold_dirty": false, "gold_types": [], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-1488", "gold_dirty": false, "gold_types": [], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-10023", "gold_dirty": false, "gold_types": [], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-2630", "gold_dirty": false, "gold_types": [], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-1639", "gold_dirty": false, "gold_types": [], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-791", "gold_dirty": false, "gold_types": [], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-11252", "gold_dirty": false, "gold_types": [], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-11633", "gold_dirty": false, "gold_types": [], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-1018", "gold_dirty": false, "gold_types": [], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-1512", "gold_dirty": false, "gold_types": [], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-11718", "gold_dirty": false, "gold_types": [], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-11599", "gold_dirty": false, "gold_types": [], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-10779", "gold_dirty": true, "gold_types": ["other"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-11290", "gold_dirty": true, "gold_types": ["mischaracterization"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-11576", "gold_dirty": true, "gold_types": ["invention"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-11171", "gold_dirty": true, "gold_types": ["invention", "mischaracterization", "miscounting"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-1473", "gold_dirty": true, "gold_types": ["invention", "mischaracterization"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-794", "gold_dirty": true, "gold_types": ["mischaracterization"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-10868", "gold_dirty": true, "gold_types": ["mischaracterization"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-1490", "gold_dirty": true, "gold_types": ["invention", "mischaracterization"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-11513", "gold_dirty": true, "gold_types": ["invention", "mischaracterization"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-10049", "gold_dirty": true, "gold_types": ["invention", "mischaracterization", "miscounting"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-11793", "gold_dirty": true, "gold_types": ["OCR", "invention", "mischaracterization"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-1124", "gold_dirty": true, "gold_types": ["invention"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-11139", "gold_dirty": true, "gold_types": ["mischaracterization"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-1433", "gold_dirty": true, "gold_types": ["invention", "mischaracterization"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-1997", "gold_dirty": true, "gold_types": ["mischaracterization"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-9764", "gold_dirty": true, "gold_types": ["invention", "other"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-11630", "gold_dirty": true, "gold_types": ["mischaracterization"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-2664", "gold_dirty": true, "gold_types": ["mischaracterization"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-10313", "gold_dirty": true, "gold_types": ["mischaracterization"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-11056", "gold_dirty": true, "gold_types": ["mischaracterization"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-10138", "gold_dirty": true, "gold_types": ["invention"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-588", "gold_dirty": true, "gold_types": ["invention", "mischaracterization"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-630", "gold_dirty": true, "gold_types": ["invention"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-11339", "gold_dirty": true, "gold_types": ["mischaracterization"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-2378", "gold_dirty": true, "gold_types": ["OCR", "mischaracterization"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-9740", "gold_dirty": true, "gold_types": ["OCR", "invention"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-1841", "gold_dirty": true, "gold_types": ["invention", "mischaracterization"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-10663", "gold_dirty": true, "gold_types": ["invention"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-10699", "gold_dirty": true, "gold_types": ["mischaracterization"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-10120", "gold_dirty": true, "gold_types": ["miscounting"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-11886", "gold_dirty": true, "gold_types": ["mischaracterization"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-11148", "gold_dirty": true, "gold_types": ["mischaracterization"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-1504", "gold_dirty": true, "gold_types": ["mischaracterization", "other"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-11022", "gold_dirty": true, "gold_types": ["mischaracterization"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-1451", "gold_dirty": true, "gold_types": ["invention", "mischaracterization"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-2204", "gold_dirty": true, "gold_types": ["invention"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-11703", "gold_dirty": true, "gold_types": ["mischaracterization"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-11887", "gold_dirty": true, "gold_types": ["invention", "mischaracterization", "miscounting"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-425", "gold_dirty": true, "gold_types": ["invention", "mischaracterization"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
+{"id": "train-en-10302", "gold_dirty": true, "gold_types": ["invention"], "pred_dirty": true, "pred_types": [], "raw": "YES"}
+{"id": "train-en-10504", "gold_dirty": true, "gold_types": ["invention", "mischaracterization"], "pred_dirty": false, "pred_types": [], "raw": "NO"}
