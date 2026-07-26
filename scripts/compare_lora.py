@@ -30,6 +30,13 @@ def main():
     base_preds = load_preds(args.base)
     lora_preds = load_preds(args.lora)
 
+    common_ids = set(base_preds) & set(lora_preds)
+    gold_by_id = {it.id: it for it in gold_items}
+    gold_items = [gold_by_id[i] for i in common_ids if i in gold_by_id]
+
+    print(f"\n  Gold: {len(load_jsonl(args.gold))} total  |  Matched: {len(gold_items)} "
+          f"(in both preds)")
+
     base_report = evaluate(gold_items, base_preds)
     lora_report = evaluate(gold_items, lora_preds)
 
