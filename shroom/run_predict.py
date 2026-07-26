@@ -39,6 +39,7 @@ def main():
         items = items[:args.max_samples]
 
     image_dir_real = os.path.realpath(args.image_dir) + os.sep
+    os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
     with open(args.output, "w", encoding="utf-8") as out:
         for it in tqdm(items, desc="predict"):
             rec = {"id": it.id, "language": it.language, "response": it.response}
