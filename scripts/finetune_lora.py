@@ -78,13 +78,11 @@ class HallucinationDataset(Dataset):
             full_msgs, tokenize=False, add_generation_prompt=False)
 
         user_inputs = self.processor(
-            text=user_templ, images=image, return_tensors="pt",
-            max_pixels=self.max_pixels)
+            text=user_templ, images=image, return_tensors="pt")
         user_len = user_inputs.input_ids.shape[-1]
 
         full_inputs = self.processor(
-            text=full_templ, images=image, return_tensors="pt",
-            max_pixels=self.max_pixels)
+            text=full_templ, images=image, return_tensors="pt")
 
         input_ids = full_inputs.input_ids[0]
         labels = input_ids.clone()
