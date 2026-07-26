@@ -88,12 +88,17 @@ class HallucinationDataset(Dataset):
         labels = input_ids.clone()
         labels[:user_len] = -100
 
-        return {
+        result = {
             "input_ids": input_ids,
             "attention_mask": full_inputs.attention_mask[0],
             "labels": labels,
             "pixel_values": full_inputs.pixel_values[0],
         }
+        if hasattr(full_inputs, "pixel_position_ids") and full_inputs.pixel_position_ids is not None:
+            result["pixel_position_ids"] = full_inputs.pixel_position_ids[0]
+        elif "pixel_position_ids" in full_inputs:
+            result["pixel_position_ids"] = full_inputs["pixel_position_ids"][0]
+        return result
 
 
 @dataclass
@@ -106,6 +111,8 @@ class MultimodalCollator:
             padded = torch.nn.utils.rnn.pad_sequence(seqs, batch_first=True)
             batch[key] = padded
         batch["pixel_values"] = pixel_values
+        if "pixel_position_ids" in features[0]:
+            batch["pixel_position_ids"] = torch.stack([f["pixel_position_ids"] for f in features])
         return batch
 
 
