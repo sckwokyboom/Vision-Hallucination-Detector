@@ -140,11 +140,21 @@ def main():
         attn_implementation="sdpa", trust_remote_code=True,
     )
 
+    linear_modules = [name for name, m in model.named_modules()
+                      if isinstance(m, torch.nn.Linear)]
+    print(f"Found {len(linear_modules)} nn.Linear modules for LoRA targeting")
+    if not linear_modules:
+        print("No nn.Linear modules found — model may use custom layer types. "
+              "Trying regex pattern fallback.")
+        target_modules = [r".*q_proj", r".*v_proj", r".*k_proj", r".*o_proj",
+                          r".*gate_proj", r".*up_proj", r".*down_proj"]
+    else:
+        target_modules = linear_modules
+
     lora_config = LoraConfig(
         r=args.lora_r,
         lora_alpha=args.lora_alpha,
-        target_modules=["q_proj", "v_proj", "k_proj", "o_proj",
-                        "gate_proj", "up_proj", "down_proj"],
+        target_modules=target_modules,
         lora_dropout=0.05,
     )
     model = get_peft_model(model, lora_config)
