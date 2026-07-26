@@ -133,6 +133,16 @@ def main():
     max_pixels = cfg.get("max_pixels", 1024 * 1024)
     dtype = getattr(torch, args.dtype)
 
+    if not torch.cuda.is_available():
+        import sys
+        sys.exit(
+            "CUDA is NOT available. Check:\n"
+            "  1. srun needs --gpus=1 for GPU allocation\n"
+            "  2. Driver version vs PyTorch CUDA version mismatch\n"
+            "Try: srun --partition=a100 --gpus=1 --cpus-per-task=8 "
+            "--mem=64G --time=24:00:00 --pty bash"
+        )
+
     print(f"Loading model {model_id} ...")
     processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
     model = AutoModelForImageTextToText.from_pretrained(
