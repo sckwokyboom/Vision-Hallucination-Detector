@@ -167,6 +167,10 @@ def main():
 
     dataset = HallucinationDataset(items, args.image_dir, processor, max_pixels)
 
+    use_bf16 = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+    use_fp16 = torch.cuda.is_available() and not use_bf16
+    print(f"CUDA available: {torch.cuda.is_available()}, bf16: {use_bf16}, fp16: {use_fp16}")
+
     trainer = Trainer(
         model=model,
         args=TrainingArguments(
@@ -178,8 +182,8 @@ def main():
             save_strategy="epoch",
             remove_unused_columns=False,
             report_to="none",
-            bf16=(args.dtype == "bfloat16"),
-            fp16=(args.dtype == "float16"),
+            bf16=use_bf16,
+            fp16=use_fp16,
         ),
         train_dataset=dataset,
         data_collator=MultimodalCollator(),
