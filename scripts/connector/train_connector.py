@@ -287,8 +287,9 @@ def main():
             tot += loss.item(); nb += 1
         _, m = run_eval(model, dv_dl, device, no_image=args.no_image)
         print(f"[ep {ep}] loss={tot/nb:.4f} dev: span_iou={m['span_iou']:.4f} "
-              f"(floor={m['floor']:.4f}, tau={m['tau']}) roc={m['roc_auc']:.3f} "
-              f"calib={m['calib']:.3f} calib_lbl={m['calib_lbl']:.3f} "
+              f"(floor={m['floor']:.4f}, tau={m['tau']}, g={m['g_thr']}) roc={m['roc_auc']:.3f} "
+              f"cor={m['cor']:.3f} cor_lbl={m['cor_lbl']:.3f} "
+              f"dirtyIoU={m['dirty_iou']:.3f} cleanOK={m['clean_empty']:.2f} "
               f"[{(time.time()-t0)/60:.1f}m]", flush=True)
 
     per, m = run_eval(model, dv_dl, device, no_image=args.no_image)
