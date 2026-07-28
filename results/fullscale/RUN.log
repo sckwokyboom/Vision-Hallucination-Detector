@@ -1,0 +1,81 @@
+[13:55:14] waiting for with-image cache...
+[15:41:16] with-image cache ready (    3799 files)
+[15:41:16] main linear seed 13
+[data] cached train=3440 dev=202 (of 3440/202) — manifest frozen
+[model] arch=linear no_image=False trainable=14.6M (backbone frozen, cached)
+[ep 1] loss=1.2759 dev: iou=0.2447 (fl=0.213, tau=0.5, g=0.0) dirty=0.047 cleanOK=0.98 gateRec=1.00 corR=0.355 corS=0.355 [7.4m]
+[ep 2] loss=1.2438 dev: iou=0.2721 (fl=0.213, tau=0.3, g=0.7) dirty=0.132 cleanOK=0.79 gateRec=0.84 corR=0.410 corS=0.397 [14.8m]
+[ep 3] loss=1.2330 dev: iou=0.2740 (fl=0.213, tau=0.2, g=0.0) dirty=0.122 cleanOK=0.84 gateRec=1.00 corR=0.370 corS=0.370 [22.8m]
+[ep 4] loss=1.2225 dev: iou=0.2675 (fl=0.213, tau=0.1, g=0.7) dirty=0.208 cleanOK=0.49 gateRec=0.84 corR=0.417 corS=0.403 [30.6m]
+[ep 5] loss=1.2243 dev: iou=0.3104 (fl=0.213, tau=0.1, g=0.7) dirty=0.181 cleanOK=0.79 gateRec=0.71 corR=0.409 corS=0.392 [38.4m]
+[ep 6] loss=1.2116 dev: iou=0.2845 (fl=0.213, tau=0.3, g=0.0) dirty=0.122 cleanOK=0.88 gateRec=1.00 corR=0.340 corS=0.340 [45.8m]
+[ep 7] loss=1.1993 dev: iou=0.2857 (fl=0.213, tau=0.1, g=0.7) dirty=0.162 cleanOK=0.74 gateRec=0.91 corR=0.422 corS=0.408 [53.4m]
+[ep 8] loss=1.1993 dev: iou=0.2987 (fl=0.213, tau=0.2, g=0.7) dirty=0.172 cleanOK=0.77 gateRec=0.81 corR=0.374 corS=0.354 [61.3m]
+[ep 9] loss=1.1912 dev: iou=0.2802 (fl=0.213, tau=0.05, g=0.5) dirty=0.199 cleanOK=0.58 gateRec=0.93 corR=0.380 corS=0.383 [69.5m]
+[ep 10] loss=1.1836 dev: iou=0.2946 (fl=0.213, tau=0.1, g=0.5) dirty=0.192 cleanOK=0.67 gateRec=0.86 corR=0.439 corS=0.432 [77.1m]
+[ep 11] loss=1.1767 dev: iou=0.2898 (fl=0.213, tau=0.1, g=0.3) dirty=0.123 cleanOK=0.91 gateRec=0.92 corR=0.415 corS=0.413 [83.6m]
+[ep 12] loss=1.1712 dev: iou=0.3062 (fl=0.213, tau=0.1, g=0.3) dirty=0.225 cleanOK=0.60 gateRec=0.96 corR=0.390 corS=0.389 [90.1m]
+{
+  "variant": "linear_gate_hyst_s13",
+  "metrics": {
+    "span_iou": 0.3061962156265345,
+    "tau": 0.1,
+    "g_thr": 0.3,
+    "floor": 0.21287128712871287,
+    "dirty_iou": 0.22548198463245264,
+    "clean_empty": 0.6046511627906976,
+    "dirty_gate_recall": 0.9622641509433962,
+    "iou_gate_open": 0.23432441540235274,
+    "avg_spans": 1.4108910891089108,
+    "roc_auc": 0.7443159355909695,
+    "pr_auc": 0.3592614658732112,
+    "cor_raw": 0.3899837220791026,
+    "cor_spearman": 0.3137340190269993,
+    "cor_submission": 0.3892270664195628,
+    "cor_lbl": 0.3581335402935683
+  }
+}
+predictions -> results/fullscale/dev_pred_linear_gate_hyst_s13.jsonl
+[17:11:36] main linear seed 42
+[data] cached train=3440 dev=202 (of 3440/202) — manifest frozen
+[model] arch=linear no_image=False trainable=14.6M (backbone frozen, cached)
+[ep 1] loss=1.2748 dev: iou=0.2420 (fl=0.213, tau=0.2, g=0.0) dirty=0.043 cleanOK=0.98 gateRec=1.00 corR=0.354 corS=0.354 [6.5m]
+[ep 2] loss=1.2484 dev: iou=0.2583 (fl=0.213, tau=0.4, g=0.0) dirty=0.121 cleanOK=0.77 gateRec=1.00 corR=0.394 corS=0.394 [13.1m]
+[ep 3] loss=1.2413 dev: iou=0.2684 (fl=0.213, tau=0.1, g=0.7) dirty=0.178 cleanOK=0.60 gateRec=0.81 corR=0.430 corS=0.394 [19.6m]
+[ep 4] loss=1.2254 dev: iou=0.3046 (fl=0.213, tau=0.05, g=0.7) dirty=0.135 cleanOK=0.93 gateRec=0.40 corR=0.400 corS=0.379 [26.1m]
+[ep 5] loss=1.2171 dev: iou=0.2854 (fl=0.213, tau=0.05, g=0.7) dirty=0.098 cleanOK=0.98 gateRec=0.28 corR=0.416 corS=0.384 [32.7m]
+[ep 6] loss=1.2101 dev: iou=0.2945 (fl=0.213, tau=0.2, g=0.7) dirty=0.148 cleanOK=0.84 gateRec=0.74 corR=0.425 corS=0.381 [39.3m]
+[ep 7] loss=1.2003 dev: iou=0.2933 (fl=0.213, tau=0.4, g=0.0) dirty=0.178 cleanOK=0.72 gateRec=1.00 corR=0.357 corS=0.357 [46.1m]
+[ep 8] loss=1.1944 dev: iou=0.2835 (fl=0.213, tau=0.3, g=0.0) dirty=0.121 cleanOK=0.88 gateRec=1.00 corR=0.416 corS=0.416 [52.7m]
+[ep 9] loss=1.1893 dev: iou=0.3129 (fl=0.213, tau=0.2, g=0.7) dirty=0.209 cleanOK=0.70 gateRec=0.87 corR=0.405 corS=0.391 [59.3m]
+[ep 10] loss=1.1823 dev: iou=0.3277 (fl=0.213, tau=0.05, g=0.7) dirty=0.190 cleanOK=0.84 gateRec=0.69 corR=0.412 corS=0.403 [65.8m]
+[ep 11] loss=1.1800 dev: iou=0.2883 (fl=0.213, tau=0.05, g=0.5) dirty=0.184 cleanOK=0.67 gateRec=0.80 corR=0.394 corS=0.395 [72.4m]
+[ep 12] loss=1.1706 dev: iou=0.2880 (fl=0.213, tau=0.05, g=0.7) dirty=0.139 cleanOK=0.84 gateRec=0.53 corR=0.406 corS=0.374 [79.2m]
+{
+  "variant": "linear_gate_hyst_s42",
+  "metrics": {
+    "span_iou": 0.2879579954048536,
+    "tau": 0.05,
+    "g_thr": 0.7,
+    "floor": 0.21287128712871287,
+    "dirty_iou": 0.1394183337847826,
+    "clean_empty": 0.8372093023255814,
+    "dirty_gate_recall": 0.5345911949685535,
+    "iou_gate_open": 0.26079429496212275,
+    "avg_spans": 0.8366336633663366,
+    "roc_auc": 0.7259741127675055,
+    "pr_auc": 0.3584771025349796,
+    "cor_raw": 0.40598040582107936,
+    "cor_spearman": 0.29125936004078923,
+    "cor_submission": 0.37364882607074545,
+    "cor_lbl": 0.3718536259331213
+  }
+}
+predictions -> results/fullscale/dev_pred_linear_gate_hyst_s42.jsonl
+[18:31:01] main linear seed 77
+[data] cached train=3440 dev=202 (of 3440/202) — manifest frozen
+[model] arch=linear no_image=False trainable=14.6M (backbone frozen, cached)
+[ep 1] loss=1.2713 dev: iou=0.2216 (fl=0.213, tau=0.2, g=0.0) dirty=0.074 cleanOK=0.77 gateRec=1.00 corR=0.325 corS=0.325 [6.9m]
+[ep 2] loss=1.2445 dev: iou=0.2515 (fl=0.213, tau=0.2, g=0.0) dirty=0.099 cleanOK=0.81 gateRec=1.00 corR=0.394 corS=0.394 [13.7m]
+[ep 3] loss=1.2263 dev: iou=0.2728 (fl=0.213, tau=0.05, g=0.7) dirty=0.189 cleanOK=0.58 gateRec=0.74 corR=0.397 corS=0.380 [20.6m]
+[ep 4] loss=1.2233 dev: iou=0.2845 (fl=0.213, tau=0.3, g=0.0) dirty=0.116 cleanOK=0.91 gateRec=1.00 corR=0.386 corS=0.386 [27.5m]

@@ -21,3 +21,5 @@ configs/mlx.yaml
 
 # Large data (kept outside the repo, in ../Shroom-Vision)
 shroom-visions-images*.tar.gz
+results/connector_cache*/
+dev.en.strat100.jsonl
