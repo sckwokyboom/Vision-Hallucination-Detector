@@ -30,7 +30,8 @@ from shroom.metrics import gold_char_probs, char_iou, pearson   # noqa: E402
 from sklearn.metrics import roc_auc_score, average_precision_score  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from model import Connector, soft_jaccard_loss, tversky_loss, ranking_loss, CATS  # noqa: E402
+from model import (Connector, SetDecoder, set_decode, SegmentScorer, dp_select,  # noqa: E402
+                   soft_jaccard_loss, tversky_loss, ranking_loss, CATS)
 
 
 # --------------------------------------------------------------------------- data
@@ -71,12 +72,23 @@ class CacheDS(Dataset):
             t2c[s:e] = t
             inpos[s:e] = np.arange(e - s)
         m = (y > 0).astype(np.int64)
+        segs = []
+        k = 0
+        while k < n_ch:
+            if m[k]:
+                a = k
+                while k < n_ch and m[k]:
+                    k += 1
+                tmean = ytype[a:k].mean(0)
+                segs.append((a, k, int(tmean.argmax()), float(y[a:k].max())))
+            else:
+                k += 1
         bio = np.zeros(n_ch, dtype=np.int64)                 # 0=O
         for k in range(n_ch):
             if m[k]:
                 bio[k] = 1 if (k == 0 or not m[k - 1]) else 2  # B / I
         return dict(V=V[: self.max_vis], H=H, t2c=t2c, inpos=inpos, y=y, ytype=ytype,
-                    bio=bio, gate=float(bool(it.labels)), item=it)
+                    bio=bio, segs=segs, gate=float(bool(it.labels)), item=it)
 
 
 def collate(batch):
@@ -103,7 +115,8 @@ def collate(batch):
         bio[i, :c] = torch.from_numpy(b["bio"])
         valid[i, :c] = torch.from_numpy((b["t2c"] >= 0).astype(np.float32))
         gate[i] = b["gate"]; items.append(b["item"])
-    return H, V, vmask, t2c, inpos, y, ytype, bio, valid, gate, items
+    segs = [b["segs"] for b in batch]
+    return H, V, vmask, t2c, inpos, y, ytype, bio, segs, valid, gate, items
 
 
 class GroupedBatchSampler(torch.utils.data.Sampler):
@@ -237,31 +250,77 @@ def merge_spans(q, ptype, tau):
 
 
 @torch.no_grad()
-def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hyst", taus=None):
+def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hyst", taus=None, setdec=None, segsc=None):
     if taus is None:
-        taus = ((0.0,) if decoder == "bio" else
+        taus = ((0.3, 0.5, 0.7, 0.9, 0.95) if decoder == "set" else
+                (0.2, 0.35, 0.5, 0.65, 0.8) if decoder == "seg" else
+                (0.0,) if decoder == "bio" else
                 (0.4, 0.5, 0.6, 0.7, 0.8) if decoder == "v2" else
                 (0.05,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95))
     model.eval()
     per = {}
     prev_V = None
-    for H, V, vmask, t2c, inpos, y, ytype, bio_t, valid, gate, items in dl:
+    for H, V, vmask, t2c, inpos, y, ytype, bio_t, seg_l, valid, gate, items in dl:
         if no_image:
             V = torch.zeros_like(V)
         if shuffle:                                   # derange within batch
             V = torch.roll(V, 1, dims=0); vmask = torch.roll(vmask, 1, dims=0)
-        ql, pl, tl, gl, bl = model(H.to(device), V.to(device), t2c.to(device),
-                                   inpos.to(device), vmask.to(device))
+        t2c_d = t2c.to(device)
+        ql, pl, tl, gl, bl, feats = model(H.to(device), V.to(device), t2c_d,
+                                          inpos.to(device), vmask.to(device))
         q = torch.sigmoid(ql).cpu().numpy(); p = torch.sigmoid(pl).cpu().numpy()
         t = torch.sigmoid(tl).cpu().numpy(); g = torch.sigmoid(gl).cpu().numpy()
         bt = bl.argmax(-1).cpu().numpy()
+        qcand = [None] * len(items)
+        if segsc is not None:
+            for b in range(len(items)):
+                n3 = int(valid[b].sum())
+                if n3 < 4:
+                    qcand[b] = []
+                    continue
+                pb = p[b, :n3]
+                cset = set()
+                for tau2 in (0.08, 0.15, 0.25, 0.4, 0.6):
+                    i3 = 0
+                    while i3 < n3:
+                        if pb[i3] >= tau2:
+                            j3 = i3
+                            while j3 < n3 and pb[j3] >= tau2 and j3 - i3 < 150:
+                                j3 += 1
+                            if j3 - i3 >= 2:
+                                cset.add((i3, j3))
+                            i3 = j3 + 1
+                        else:
+                            i3 += 1
+                cands = sorted(cset)[:60]
+                if cands:
+                    with torch.no_grad():
+                        sc, tp2 = segsc(feats[b, :n3], cands)
+                    scs = torch.sigmoid(sc).cpu().numpy()
+                    tps = tp2.argmax(-1).cpu().numpy()
+                    qcand[b] = [(float(scs[i4]), a, b4, int(tps[i4]))
+                                for i4, (a, b4) in enumerate(cands)]
+                else:
+                    qcand[b] = []
+        if setdec is not None:
+            sl_, el_, cf_, tp_, sp_ = setdec(feats, (t2c_d < 0))
+            sln = sl_.cpu().numpy(); eln = el_.cpu().numpy()
+            cfn = torch.sigmoid(cf_).cpu().numpy(); tpn = tp_.cpu().numpy()
+            for b in range(len(items)):
+                cands = []
+                for k in range(sln.shape[1]):
+                    a = int(sln[b, k].argmax())
+                    e = eln[b, k].copy(); e[:a] = -1e30; e[a + 150:] = -1e30
+                    cands.append((float(cfn[b, k]), a, int(e.argmax()) + 1,
+                                  int(tpn[b, k].argmax())))
+                qcand[b] = cands
         for b, it in enumerate(items):
             n = int(valid[b].sum())
-            per[it.id] = (it, q[b, :n], p[b, :n], t[b, :n], float(g[b]), bt[b, :n])
+            per[it.id] = (it, q[b, :n], p[b, :n], t[b, :n], float(g[b]), bt[b, :n], qcand[b])
     ids = list(per)
     ga, pa = [], []
     for i in ids:
-        it, q, p, t, g, bt = per[i]
+        it, q, p, t, g, bt, qsp = per[i]
         ga += gold_char_probs(it.labels, len(q)); pa += p.tolist()
     gb = [1 if g > 0 else 0 for g in ga]
     roc = roc_auc_score(gb, pa) if len(set(gb)) > 1 else float("nan")
@@ -270,7 +329,7 @@ def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hys
     # label-aware calibration (Cor lbl approx): pearson over per-char per-type gold vs pred
     gt, pt = [], []
     for i in ids:
-        it, q, p, t, g, bt = per[i]
+        it, q, p, t, g, bt, qsp = per[i]
         yt = np.zeros((len(q), len(CATS)))
         for sp in it.labels:
             k = CATS.index(sp["label"]) if sp.get("label") in CATS else 4
@@ -279,7 +338,25 @@ def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hys
         gt += yt.flatten().tolist(); pt += t.flatten().tolist()
     cal_lbl = pearson(gt, pt)
     floor = float(np.mean([1.0 if not per[i][0].labels else 0.0 for i in ids]))
-    def decode(p, t, g, tau, g_thr, bt=None):
+    def decode(p, t, g, tau, g_thr, bt=None, qsp=None):
+        if decoder == "seg":
+            if not qsp:
+                return []
+            cands3 = [(a, b2, ti) for _, a, b2, ti in qsp]
+            scores3 = [c[0] for c in qsp]
+            sel = dp_select(cands3, scores3, tau)
+            return sorted(({"start": cands3[i5][0], "end": cands3[i5][1],
+                            "prob": scores3[i5], "label": CATS[cands3[i5][2]]}
+                           for i5 in sel), key=lambda sp: sp["start"])
+        if decoder == "set":
+            spans = []
+            for conf, a, b2, ti in sorted(qsp or [], key=lambda c: -c[0]):
+                if conf < tau:
+                    break
+                if any(not (b2 <= sp["start"] or a >= sp["end"]) for sp in spans):
+                    continue
+                spans.append({"start": a, "end": b2, "prob": conf, "label": CATS[ti]})
+            return sorted(spans, key=lambda sp: sp["start"])
         if decoder == "bio":
             spans = bio_spans(bt, p, t)
             return [] if (g_thr > 0 and g < g_thr) else spans
@@ -295,7 +372,9 @@ def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hys
         if decoder in ("hyst", "gate_hyst"):
             return hysteresis_spans(p, t, tau, 0.6 * tau)
         return merge_spans(p, t, tau)                     # simple threshold
-    if decoder == "bio":
+    if decoder in ("set", "seg"):
+        g_grid = (0.0,)
+    elif decoder == "bio":
         g_grid = (0.0, 0.3, 0.5, 0.7)
     elif decoder == "v2":
         g_grid = (0.0, 0.5, 1.0, 2.0)                     # soft-gate exponent alpha
@@ -308,8 +387,8 @@ def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hys
         for tau in taus:
             ious = []
             for i in ids:
-                it, q, p, t, g, bt = per[i]
-                ious.append(char_iou(it.labels, decode(p, t, g, tau, g_thr, bt), len(p)))
+                it, q, p, t, g, bt, qsp = per[i]
+                ious.append(char_iou(it.labels, decode(p, t, g, tau, g_thr, bt, qsp), len(p)))
             m = float(np.mean(ious))
             if m > best["iou"]:
                 best = {"iou": m, "tau": tau, "g_thr": g_thr}
@@ -317,8 +396,8 @@ def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hys
     d_ious, open_ious, clean_ok, n_clean, n_dirty, dirty_open, nspans = [], [], 0, 0, 0, 0, []
     sub_g, sub_p = [], []
     for i in ids:
-        it, q, p, t, g, bt = per[i]
-        spans = decode(p, t, g, best["tau"], best["g_thr"], bt)
+        it, q, p, t, g, bt, qsp = per[i]
+        spans = decode(p, t, g, best["tau"], best["g_thr"], bt, qsp)
         nspans.append(len(spans))
         gated_out = (decoder in ("gate", "gate_hyst") and g < best["g_thr"])
         sub = np.zeros(len(p)) if gated_out else p          # submission-time probs
@@ -362,10 +441,14 @@ def main():
     ap.add_argument("--seed", type=int, default=13)
     ap.add_argument("--max_train", type=int, default=None, help="cap train items (learning curve)")
     ap.add_argument("--eval_ids", default=None, help="json file with {'tune_dev': [...]} to eval on")
-    ap.add_argument("--decoder", choices=["simple","gate","hyst","gate_hyst","v2","bio"], default="gate_hyst")
+    ap.add_argument("--decoder", choices=["simple","gate","hyst","gate_hyst","v2","bio","set","seg"], default="gate_hyst")
     ap.add_argument("--tversky", action="store_true", help="precision-weighted Tversky instead of soft-Jaccard")
     ap.add_argument("--no_type_loss", action="store_true")
     ap.add_argument("--bio", action="store_true", help="BIO boundary head + loss")
+    ap.add_argument("--head", choices=["none", "set", "seg"], default="none",
+                    help="'set' = DETR-style set-of-spans decoder (Hungarian matching)")
+    ap.add_argument("--set_k", type=int, default=12)
+    ap.add_argument("--l_set", type=float, default=1.0)
     ap.add_argument("--gate_consistency", action="store_true")
     ap.add_argument("--contrastive", action="store_true", help="group same image+question in batches + margin loss")
     ap.add_argument("--l_bio", type=float, default=1.0)
@@ -416,14 +499,18 @@ def main():
     n_par = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"[model] arch={args.arch} no_image={args.no_image} trainable={n_par/1e6:.1f}M "
           f"(backbone frozen, cached)", flush=True)
-    opt = torch.optim.AdamW(model.parameters(), lr=args.lr)
+    setdec = SetDecoder(args.dim, K=args.set_k).to(device) if args.head == "set" else None
+    segsc = SegmentScorer(args.dim).to(device) if args.head == "seg" else None
+    params = (list(model.parameters()) + (list(setdec.parameters()) if setdec else [])
+              + (list(segsc.parameters()) if segsc else []))
+    opt = torch.optim.AdamW(params, lr=args.lr)
     bce = nn.BCEWithLogitsLoss(reduction="none")
 
-    tag = f"{args.arch}{'_noimg' if args.no_image else ''}_{args.decoder}{'_tv' if args.tversky else ''}{'_bio' if args.bio else ''}{'_gc' if args.gate_consistency else ''}{'_ctr' if args.contrastive else ''}{'_notype' if args.no_type_loss else ''}{'_nogru' if args.no_gru else ''}_s{args.seed}"
+    tag = f"{args.arch}{'_noimg' if args.no_image else ''}_{args.decoder}{'_tv' if args.tversky else ''}{'_bio' if args.bio else ''}{'_gc' if args.gate_consistency else ''}{'_ctr' if args.contrastive else ''}{'_set' if args.head=='set' else ''}{'_seg' if args.head=='seg' else ''}{'_notype' if args.no_type_loss else ''}{'_nogru' if args.no_gru else ''}_s{args.seed}"
     t0 = time.time()
     for ep in range(1, 0 if args.eval_only else args.epochs + 1):
         model.train(); tot = nb = 0
-        for H, V, vmask, t2c, inpos, y, ytype, bio_t, valid, gate, bitems in tr_dl:
+        for H, V, vmask, t2c, inpos, y, ytype, bio_t, seg_l, valid, gate, bitems in tr_dl:
             if args.no_image:
                 V = torch.zeros_like(V)
             H, V, vmask = H.to(device), V.to(device), vmask.to(device)
@@ -431,7 +518,7 @@ def main():
             y, ytype, valid, gate = (y.to(device), ytype.to(device),
                                      valid.to(device), gate.to(device))
             bio_t = bio_t.to(device)
-            ql, pl, tl, gl, bl = model(H, V, t2c, inpos, vmask)
+            ql, pl, tl, gl, bl, feats = model(H, V, t2c, inpos, vmask)
             def exmean(x):                                     # per-example, then batch
                 return ((x * valid).sum(1) / valid.sum(1).clamp(min=1)).mean()
             m = (y > 0).float()
@@ -465,15 +552,75 @@ def main():
                             npair += 1
                 if npair:
                     loss = loss + args.l_contrast * closs / npair
+            if setdec is not None:
+                from scipy.optimize import linear_sum_assignment
+                pad = (t2c < 0)
+                sl_, el_, cf_, tp_, sp_ = setdec(feats, pad)
+                lsm_s = torch.log_softmax(sl_, -1); lsm_e = torch.log_softmax(el_, -1)
+                sloss, nb2 = feats.new_zeros(()), 0
+                for b3 in range(feats.shape[0]):
+                    segs = seg_l[b3]
+                    K = sl_.shape[1]
+                    tgt_conf = torch.zeros(K, device=device)
+                    if segs:
+                        with torch.no_grad():
+                            C_ = np.zeros((K, len(segs)))
+                            for gi, (a, b4, ti, pr) in enumerate(segs):
+                                C_[:, gi] = (-lsm_s[b3, :, a] - lsm_e[b3, :, b4 - 1]).cpu().numpy()
+                        rows, cols = linear_sum_assignment(C_)
+                        for kq, gi in zip(rows, cols):
+                            a, b4, ti, pr = segs[gi]
+                            sloss = sloss - lsm_s[b3, kq, a] - lsm_e[b3, kq, b4 - 1]
+                            sloss = sloss + nn.functional.cross_entropy(
+                                tp_[b3, kq].unsqueeze(0),
+                                torch.tensor([ti], device=device))
+                            sloss = sloss + (torch.sigmoid(sp_[b3, kq]) - pr) ** 2
+                            tgt_conf[kq] = 1.0
+                    w = torch.where(tgt_conf > 0, torch.tensor(1.0, device=device),
+                                    torch.tensor(0.2, device=device))
+                    sloss = sloss + (nn.functional.binary_cross_entropy_with_logits(
+                        cf_[b3], tgt_conf, weight=w))
+                    nb2 += 1
+                loss = loss + args.l_set * sloss / max(nb2, 1)
+            if segsc is not None:
+                gloss, ng = feats.new_zeros(()), 0
+                for b3 in range(feats.shape[0]):
+                    n3 = int(valid[b3].sum())
+                    if n3 < 4:
+                        continue
+                    xb = feats[b3, :n3]
+                    cands, labels, tids = [], [], []
+                    for (a, b4, ti, pr) in seg_l[b3]:
+                        if b4 <= n3:
+                            cands.append((a, b4)); labels.append(1.0); tids.append(ti)
+                            for da, db in ((-6, 0), (6, 0), (0, 8), (0, -8) if b4-a > 10 else (0, 4),
+                                           (-15, 15)):
+                                a2, b5 = max(0, a + da), min(n3, b4 + db)
+                                if b5 - a2 >= 2 and (a2, b5) != (a, b4):
+                                    cands.append((a2, b5)); labels.append(0.0); tids.append(-1)
+                    rng2 = random.Random(int(gate[b3].item() * 7) + b3)
+                    for _ in range(12):
+                        L2 = rng2.choice((3, 6, 12, 25, 50))
+                        a2 = rng2.randrange(0, max(1, n3 - L2))
+                        cands.append((a2, min(n3, a2 + L2))); labels.append(0.0); tids.append(-1)
+                    sc, tp2 = segsc(xb, cands)
+                    lab_t = torch.tensor(labels, device=device)
+                    gloss = gloss + nn.functional.binary_cross_entropy_with_logits(sc, lab_t)
+                    pos = [i2 for i2, t3 in enumerate(tids) if t3 >= 0]
+                    if pos:
+                        gloss = gloss + 0.5 * nn.functional.cross_entropy(
+                            tp2[pos], torch.tensor([tids[i2] for i2 in pos], device=device))
+                    ng += 1
+                loss = loss + args.l_set * gloss / max(ng, 1)
             opt.zero_grad(); loss.backward(); opt.step()
             tot += loss.item(); nb += 1
-        _, m = run_eval(model, dv_dl, device, no_image=args.no_image, decoder=args.decoder)
+        _, m = run_eval(model, dv_dl, device, no_image=args.no_image, decoder=args.decoder, setdec=setdec, segsc=segsc)
         print(f"[ep {ep}] loss={tot/nb:.4f} dev: iou={m['span_iou']:.4f} (fl={m['floor']:.3f}, "
               f"tau={m['tau']}, g={m['g_thr']}) dirty={m['dirty_iou']:.3f} cleanOK={m['clean_empty']:.2f} "
               f"gateRec={m['dirty_gate_recall']:.2f} corR={m['cor_raw']:.3f} corS={m['cor_submission']:.3f} "
               f"[{(time.time()-t0)/60:.1f}m]", flush=True)
 
-    per, m = run_eval(model, dv_dl, device, no_image=args.no_image, decoder=args.decoder)
+    per, m = run_eval(model, dv_dl, device, no_image=args.no_image, decoder=args.decoder, setdec=setdec, segsc=segsc)
     results = {"variant": tag, "metrics": m}
     if args.eval_shuffle and not args.no_image:
         _, ms = run_eval(model, dv_dl, device, shuffle=True, decoder=args.decoder)
@@ -482,8 +629,24 @@ def main():
     # official JSONL
     pred_path = os.path.join(args.out_dir, f"dev_pred_{tag}.jsonl")
     with open(pred_path, "w", encoding="utf-8") as f:
-        for i, (it, q, p, t, g, bt) in per.items():
-            if args.decoder == "bio":
+        for i, (it, q, p, t, g, bt, qsp) in per.items():
+            if args.decoder == "seg":
+                cands3 = [(a, b2, ti) for _, a, b2, ti in (qsp or [])]
+                scores3 = [c[0] for c in (qsp or [])]
+                sel = dp_select(cands3, scores3, m["tau"]) if cands3 else []
+                spans = sorted(({"start": cands3[i5][0], "end": cands3[i5][1],
+                                 "prob": scores3[i5], "label": CATS[cands3[i5][2]]}
+                                for i5 in sel), key=lambda sp: sp["start"])
+            elif args.decoder == "set":
+                spans = []
+                for conf, a, b2, ti in sorted(qsp or [], key=lambda c: -c[0]):
+                    if conf < m["tau"]:
+                        break
+                    if any(not (b2 <= sp["start"] or a >= sp["end"]) for sp in spans):
+                        continue
+                    spans.append({"start": a, "end": b2, "prob": conf, "label": CATS[ti]})
+                spans = sorted(spans, key=lambda sp: sp["start"])
+            elif args.decoder == "bio":
                 spans = bio_spans(bt, p, t) if (m["g_thr"] == 0 or g >= m["g_thr"]) else []
             elif args.decoder == "v2":
                 spans = peak_spans(p, t, rel_hi=m["tau"], rel_lo=0.55 * m["tau"])
