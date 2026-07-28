@@ -45,7 +45,7 @@ class CrossBlock(nn.Module):
 
 class Connector(nn.Module):
     def __init__(self, d_backbone, n_layers, dim=768, heads=8, blocks=3, dropout=0.1,
-                 arch="connector"):
+                 arch="connector", use_gru=True):
         super().__init__()
         self.arch = arch
         self.mix_h = LayerMix(n_layers)
@@ -61,6 +61,7 @@ class Connector(nn.Module):
         self.refine = nn.Sequential(
             nn.Conv1d(dim + 32, dim, 5, padding=2), nn.GELU(),
             nn.Conv1d(dim, dim, 5, padding=2), nn.GELU())
+        self.use_gru = use_gru
         self.gru = nn.GRU(dim, dim // 2, batch_first=True, bidirectional=True)
         self.head_q = nn.Linear(dim, 1)
         self.head_p = nn.Linear(dim, 1)
@@ -86,8 +87,9 @@ class Connector(nn.Module):
         pos = self.char_pos(char_inpos.clamp(min=0, max=63))
         x = torch.cat([zc, pos], dim=-1).transpose(1, 2)        # [B,dim+32,Cmax]
         x = self.refine(x).transpose(1, 2)                      # [B,Cmax,dim]
-        g, _ = self.gru(x)
-        x = x + g                                               # residual BiGRU context
+        if self.use_gru:
+            g, _ = self.gru(x)
+            x = x + g                                               # residual BiGRU context
         valid = (tok2char >= 0)
         pooled = (x * valid.unsqueeze(-1)).sum(1) / valid.sum(1, keepdim=True).clamp(min=1)
         return (self.head_q(x).squeeze(-1), self.head_p(x).squeeze(-1),

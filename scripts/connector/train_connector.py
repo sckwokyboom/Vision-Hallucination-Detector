@@ -152,7 +152,7 @@ def merge_spans(q, ptype, tau):
 
 
 @torch.no_grad()
-def run_eval(model, dl, device, no_image=False, shuffle=False, taus=(0.05,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95)):
+def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hyst", taus=(0.05,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95)):
     model.eval()
     per = {}
     prev_V = None
@@ -189,31 +189,51 @@ def run_eval(model, dl, device, no_image=False, shuffle=False, taus=(0.05,0.1,0.
         gt += yt.flatten().tolist(); pt += t.flatten().tolist()
     cal_lbl = pearson(gt, pt)
     floor = float(np.mean([1.0 if not per[i][0].labels else 0.0 for i in ids]))
+    def decode(p, t, g, tau, g_thr):
+        if decoder in ("gate", "gate_hyst") and g < g_thr:
+            return []
+        if decoder in ("hyst", "gate_hyst"):
+            return hysteresis_spans(p, t, tau, 0.6 * tau)
+        return merge_spans(p, t, tau)                     # simple threshold
+    g_grid = (0.0,) if decoder in ("simple", "hyst") else (0.0, 0.3, 0.5, 0.7)
     best = {"iou": -1}
-    for g_thr in (0.0, 0.3, 0.5, 0.7):
+    for g_thr in g_grid:
         for tau in taus:
             ious = []
             for i in ids:
                 it, q, p, t, g = per[i]
-                spans = [] if g < g_thr else hysteresis_spans(p, t, tau, 0.6 * tau)
-                ious.append(char_iou(it.labels, spans, len(p)))
+                ious.append(char_iou(it.labels, decode(p, t, g, tau, g_thr), len(p)))
             m = float(np.mean(ious))
             if m > best["iou"]:
                 best = {"iou": m, "tau": tau, "g_thr": g_thr}
     # diagnostics at the best operating point
-    d_ious, clean_ok, n_clean = [], 0, 0
+    d_ious, open_ious, clean_ok, n_clean, n_dirty, dirty_open, nspans = [], [], 0, 0, 0, 0, []
+    sub_g, sub_p = [], []
     for i in ids:
         it, q, p, t, g = per[i]
-        spans = [] if g < best["g_thr"] else hysteresis_spans(p, t, best["tau"], 0.6 * best["tau"])
+        spans = decode(p, t, g, best["tau"], best["g_thr"])
+        nspans.append(len(spans))
+        gated_out = (decoder in ("gate", "gate_hyst") and g < best["g_thr"])
+        sub = np.zeros(len(p)) if gated_out else p          # submission-time probs
+        sub_g += gold_char_probs(it.labels, len(p)); sub_p += sub.tolist()
         if it.labels:
-            d_ious.append(char_iou(it.labels, spans, len(p)))
+            n_dirty += 1
+            iou_i = char_iou(it.labels, spans, len(p))
+            d_ious.append(iou_i)
+            if not gated_out:
+                dirty_open += 1; open_ious.append(iou_i)
         else:
             n_clean += 1
             clean_ok += (0 if spans else 1)
+    from shroom.metrics import spearman as _sp
     return per, dict(span_iou=best["iou"], tau=best["tau"], g_thr=best["g_thr"], floor=floor,
                      dirty_iou=float(np.mean(d_ious)) if d_ious else 0.0,
                      clean_empty=(clean_ok / n_clean) if n_clean else 1.0,
-                     roc_auc=roc, pr_auc=pr, cor=cal, cor_lbl=cal_lbl)
+                     dirty_gate_recall=(dirty_open / n_dirty) if n_dirty else 0.0,
+                     iou_gate_open=float(np.mean(open_ious)) if open_ious else 0.0,
+                     avg_spans=float(np.mean(nspans)),
+                     roc_auc=roc, pr_auc=pr, cor_raw=cal, cor_spearman=float(_sp(ga, pa)),
+                     cor_submission=float(pearson(sub_g, sub_p)), cor_lbl=cal_lbl)
 
 
 # --------------------------------------------------------------------------- main
@@ -234,6 +254,11 @@ def main():
     ap.add_argument("--dev_frac", type=float, default=0.1)
     ap.add_argument("--seed", type=int, default=13)
     ap.add_argument("--max_train", type=int, default=None, help="cap train items (learning curve)")
+    ap.add_argument("--eval_ids", default=None, help="json file with {'tune_dev': [...]} to eval on")
+    ap.add_argument("--decoder", choices=["simple","gate","hyst","gate_hyst"], default="gate_hyst")
+    ap.add_argument("--no_gru", action="store_true")
+    ap.add_argument("--eval_only", action="store_true")
+    ap.add_argument("--init_from", default=None, help="load model weights before train/eval")
     args = ap.parse_args()
 
     l1, l2, l3, l4, l5 = [float(x) for x in args.lambdas.split(",")]
@@ -242,29 +267,42 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     items = load_jsonl(args.train_file)
-    tr_ids, dv_ids = group_split_by_image(items, dev_frac=args.dev_frac, seed=args.seed)
+    tr_ids, dv_ids = group_split_by_image(items, dev_frac=args.dev_frac, seed=13)  # split seed FIXED
+    if args.eval_ids:
+        prot = json.load(open(args.eval_ids))
+        dv_keep = set(prot.get("tune_dev") or prot.get("tune_dev200"))
+        dv_ids = [i for i in dv_ids if i in dv_keep]
     tr = [it for it in items if it.id in set(tr_ids)]
     dv = [it for it in items if it.id in set(dv_ids)]
     if args.max_train:
         tr = tr[:args.max_train]
     tr_ds, dv_ds = CacheDS(tr, args.cache_dir), CacheDS(dv, args.cache_dir)
-    print(f"[data] cached train={len(tr_ds)} dev={len(dv_ds)} (of {len(tr)}/{len(dv)})", flush=True)
+    manifest = {"train_ids": [it.id for it in tr_ds.items], "dev_ids": [it.id for it in dv_ds.items],
+                "seed": args.seed, "decoder": args.decoder, "gru": not args.no_gru}
+    os.makedirs(args.out_dir, exist_ok=True)
+    with open(os.path.join(args.out_dir, f"manifest_seed{args.seed}.json"), "w") as f:
+        json.dump(manifest, f)
+    print(f"[data] cached train={len(tr_ds)} dev={len(dv_ds)} (of {len(tr)}/{len(dv)}) — manifest frozen", flush=True)
     assert len(tr_ds) > 50, "too few cached items — run extract_features.py first"
     tr_dl = DataLoader(tr_ds, batch_size=args.batch, shuffle=True, collate_fn=collate)
     dv_dl = DataLoader(dv_ds, batch_size=args.batch, shuffle=False, collate_fn=collate)
 
     z0 = tr_ds[0]
     D, L = z0["H"].shape[2], z0["H"].shape[1]
-    model = Connector(D, L, dim=args.dim, blocks=args.blocks, arch=args.arch).to(device)
+    model = Connector(D, L, dim=args.dim, blocks=args.blocks, arch=args.arch,
+                      use_gru=not args.no_gru).to(device)
+    if args.init_from:
+        model.load_state_dict(torch.load(args.init_from, map_location=device))
+        print(f"[model] loaded weights from {args.init_from}", flush=True)
     n_par = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"[model] arch={args.arch} no_image={args.no_image} trainable={n_par/1e6:.1f}M "
           f"(backbone frozen, cached)", flush=True)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr)
     bce = nn.BCEWithLogitsLoss(reduction="none")
 
-    tag = f"{args.arch}{'_noimg' if args.no_image else ''}"
+    tag = f"{args.arch}{'_noimg' if args.no_image else ''}_{args.decoder}{'_nogru' if args.no_gru else ''}_s{args.seed}"
     t0 = time.time()
-    for ep in range(1, args.epochs + 1):
+    for ep in range(1, 0 if args.eval_only else args.epochs + 1):
         model.train(); tot = nb = 0
         for H, V, vmask, t2c, inpos, y, ytype, valid, gate, _ in tr_dl:
             if args.no_image:
@@ -285,17 +323,16 @@ def main():
                     + l5 * bce(gl, gate).mean())
             opt.zero_grad(); loss.backward(); opt.step()
             tot += loss.item(); nb += 1
-        _, m = run_eval(model, dv_dl, device, no_image=args.no_image)
-        print(f"[ep {ep}] loss={tot/nb:.4f} dev: span_iou={m['span_iou']:.4f} "
-              f"(floor={m['floor']:.4f}, tau={m['tau']}, g={m['g_thr']}) roc={m['roc_auc']:.3f} "
-              f"cor={m['cor']:.3f} cor_lbl={m['cor_lbl']:.3f} "
-              f"dirtyIoU={m['dirty_iou']:.3f} cleanOK={m['clean_empty']:.2f} "
+        _, m = run_eval(model, dv_dl, device, no_image=args.no_image, decoder=args.decoder)
+        print(f"[ep {ep}] loss={tot/nb:.4f} dev: iou={m['span_iou']:.4f} (fl={m['floor']:.3f}, "
+              f"tau={m['tau']}, g={m['g_thr']}) dirty={m['dirty_iou']:.3f} cleanOK={m['clean_empty']:.2f} "
+              f"gateRec={m['dirty_gate_recall']:.2f} corR={m['cor_raw']:.3f} corS={m['cor_submission']:.3f} "
               f"[{(time.time()-t0)/60:.1f}m]", flush=True)
 
-    per, m = run_eval(model, dv_dl, device, no_image=args.no_image)
+    per, m = run_eval(model, dv_dl, device, no_image=args.no_image, decoder=args.decoder)
     results = {"variant": tag, "metrics": m}
     if args.eval_shuffle and not args.no_image:
-        _, ms = run_eval(model, dv_dl, device, shuffle=True)
+        _, ms = run_eval(model, dv_dl, device, shuffle=True, decoder=args.decoder)
         results["metrics_shuffled_image"] = ms
         print(f"[control] shuffled-image: span_iou={ms['span_iou']:.4f} roc={ms['roc_auc']:.3f}")
     # official JSONL
