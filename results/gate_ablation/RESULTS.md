@@ -119,3 +119,17 @@ Findings: (1) training on frozen-backbone features works — calib 0.355 from ju
 was invalid — H had already seen the image inside Gemma); (3) cross-attention over V adds nothing at
 this scale — a simple linear readout of H wins. Next: full 3.4k cache + longer training.
 Caveat: dev=31 — directional, not significant.
+
+## 7. Quantization verdict (Mac, matched 1000-train, tune-202)
+
+| | 4bit | 8bit | paired delta (95% CI) |
+|---|---|---|---|
+| decoded IoU | 0.290 | 0.281 | -0.009 [-0.042,+0.024] ns |
+| raw AUC / PR-AUC | 0.771 / 0.500 | 0.782 / 0.514 | small + |
+| oracle-thr / oracle-mspan | 0.427 / 0.654 | 0.449 / 0.709 | +0.022 ns / +0.055 |
+
+8-bit slightly improves the probability FIELDS (all 4 representation metrics up, none
+significant) and does NOT move decoded IoU. Per the pre-registered rule: stay on 4-bit,
+invest in training signals (v3), not precision. bf16 point comes from the H100 ladder.
+Also: v2 peak-decoder swap on frozen weights = null (0.3045 vs 0.3062) — the oracle
+threshold gap is not reachable by post-hoc decoding; fields must get sharper via training.
