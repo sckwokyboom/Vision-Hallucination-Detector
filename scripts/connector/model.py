@@ -64,6 +64,7 @@ class Connector(nn.Module):
         self.use_gru = use_gru
         self.gru = nn.GRU(dim, dim // 2, batch_first=True, bidirectional=True)
         self.head_q = nn.Linear(dim, 1)
+        self.head_bio = nn.Linear(dim, 3)                      # O / B / I per char
         self.head_p = nn.Linear(dim, 1)
         self.head_t = nn.Linear(dim, len(CATS))
         self.head_gate = nn.Linear(dim, 1)
@@ -93,7 +94,17 @@ class Connector(nn.Module):
         valid = (tok2char >= 0)
         pooled = (x * valid.unsqueeze(-1)).sum(1) / valid.sum(1, keepdim=True).clamp(min=1)
         return (self.head_q(x).squeeze(-1), self.head_p(x).squeeze(-1),
-                self.head_t(x), self.head_gate(pooled).squeeze(-1))
+                self.head_t(x), self.head_gate(pooled).squeeze(-1),
+                self.head_bio(x))
+
+
+def tversky_loss(q_logit, m, valid, alpha=0.7, beta=0.3):
+    """Precision-weighted soft Tversky: alpha>beta penalizes FP harder than FN."""
+    q = torch.sigmoid(q_logit) * valid
+    tp = (q * m).sum(1)
+    fp = (q * (1 - m) * valid).sum(1)
+    fn = ((1 - q) * m).sum(1)
+    return (1 - tp / (tp + alpha * fp + beta * fn + 1e-6)).mean()
 
 
 def soft_jaccard_loss(q_logit, m, valid):
