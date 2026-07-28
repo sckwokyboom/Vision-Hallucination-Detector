@@ -614,6 +614,8 @@ def main():
                 loss = loss + args.l_set * gloss / max(ng, 1)
             opt.zero_grad(); loss.backward(); opt.step()
             tot += loss.item(); nb += 1
+            if nb % 100 == 0:
+                print(f"[ep {ep} b{nb}/{len(tr_dl)}] loss={tot/nb:.4f}", flush=True)
         _, m = run_eval(model, dv_dl, device, no_image=args.no_image, decoder=args.decoder, setdec=setdec, segsc=segsc)
         print(f"[ep {ep}] loss={tot/nb:.4f} dev: iou={m['span_iou']:.4f} (fl={m['floor']:.3f}, "
               f"tau={m['tau']}, g={m['g_thr']}) dirty={m['dirty_iou']:.3f} cleanOK={m['clean_empty']:.2f} "
