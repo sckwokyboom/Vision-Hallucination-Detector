@@ -161,7 +161,7 @@ def run_eval(model, dl, device, no_image=False, shuffle=False, taus=(0.05,0.1,0.
     floor = float(np.mean([1.0 if not per[i][0].labels else 0.0 for i in ids]))
     best = (0.3, -1)
     for tau in taus:
-        ious = [char_iou(per[i][0].labels, merge_spans(per[i][1], per[i][3], tau), len(per[i][1]))
+        ious = [char_iou(per[i][0].labels, merge_spans(per[i][2], per[i][3], tau), len(per[i][2]))
                 for i in ids]
         m = float(np.mean(ious))
         if m > best[1]:
@@ -253,7 +253,7 @@ def main():
     with open(pred_path, "w", encoding="utf-8") as f:
         for i, (it, q, p, t) in per.items():
             f.write(json.dumps({"id": i, "language": it.language, "response": it.response,
-                                "pred_labels": merge_spans(q, t, m["tau"]),
+                                "pred_labels": merge_spans(p, t, m["tau"]),
                                 "char_probs": [round(float(x), 3) for x in p]},
                                ensure_ascii=False) + "\n")
     with open(os.path.join(args.out_dir, f"summary_{tag}.json"), "w") as f:

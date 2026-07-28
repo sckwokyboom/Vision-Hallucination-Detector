@@ -50,6 +50,7 @@ def main():
     ap.add_argument("--max_side", type=int, default=768)
     ap.add_argument("--max_items", type=int, default=None)
     ap.add_argument("--probe", type=int, default=0)
+    ap.add_argument("--no_image", action="store_true", help="true text-only cache (no image in prompt)")
     args = ap.parse_args()
 
     layers = [int(x) for x in args.layers.split(",")]
@@ -83,9 +84,10 @@ def main():
             im = im.resize((int(w * s), int(h * s)))
         im.save("/tmp/_fx.png")
 
-        templ = build_template(build_text(it.prompt, it.response))
-        inputs = prepare_inputs(processor, images=["/tmp/_fx.png"], prompts=[templ],
-                                image_token_index=img_tok)
+        text = build_text(it.prompt, it.response)
+        templ = (f"<bos><|turn>user\n{text}<turn|>\n" if args.no_image else build_template(text))
+        inputs = prepare_inputs(processor, images=(None if args.no_image else ["/tmp/_fx.png"]),
+                                prompts=[templ], image_token_index=img_tok)
         ids = np.array(inputs["input_ids"][0].tolist())
 
         # review-copy token span: tokenize the answer alone (no specials) and find the
@@ -117,7 +119,7 @@ def main():
         sink = []
         kwargs = {k: v for k, v in inputs.items()
                   if k not in ("input_ids", "pixel_values", "attention_mask")}
-        out = model(input_ids=inputs["input_ids"], pixel_values=inputs.get("pixel_values"),
+        out = model(input_ids=inputs["input_ids"], pixel_values=(None if args.no_image else inputs.get("pixel_values")),
                     mask=inputs.get("attention_mask"),
                     capture_layer_ids=layers, hidden_sink=sink, **kwargs)
         mx.eval([s[1] if isinstance(s, tuple) else s for s in sink])

@@ -101,3 +101,21 @@ fine-tuning / a stronger vision stack), not more text capacity alone.
 Score files are in this folder (`score_*.jsonl`: id, gold_dirty, score, first_token, argmax_yes).
 Ablation prediction files: `{A,B,C,D,F}_*.jsonl`. Sample: `stratified_100.jsonl`.
 Scorers: `scripts/mm_score_eval.py` (ROC/PR/spec@recall), `scripts/mm_gate_eval.py` (binary+type).
+
+## 6. Connector smoke (frozen Gemma-4-12b features, Mac MLX) — SIGNAL CONFIRMED
+
+Cache: 350 items (266 visual tokens @768px, layers {24,32,40,47}, ~3s/item). Train 319 / dev 31
+(image-grouped). 12 epochs, spans from the soft-prob head.
+
+| variant | span_iou | floor | roc_auc | calib | calib_lbl |
+|---|---|---|---|---|---|
+| linear probe, with-image H | **0.3267** | 0.3226 | **0.684** | **0.355** | **0.305** |
+| linear probe, text-only H (true control: separate no-image extraction) | 0.3257 | 0.3226 | 0.677 | 0.276 | 0.219 |
+| cross-attn connector, with-image | 0.3226 | 0.3226 | 0.674 | 0.258 | 0.197 |
+
+Findings: (1) training on frozen-backbone features works — calib 0.355 from just 319 examples,
+~2x the best zero-shot; (2) the visual contribution flows through the backbone's own fusion into H
+(with-image > text-only on every metric; the earlier "no_image" control that only zeroed our V copy
+was invalid — H had already seen the image inside Gemma); (3) cross-attention over V adds nothing at
+this scale — a simple linear readout of H wins. Next: full 3.4k cache + longer training.
+Caveat: dev=31 — directional, not significant.
