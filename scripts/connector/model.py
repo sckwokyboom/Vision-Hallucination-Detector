@@ -56,11 +56,12 @@ class Connector(nn.Module):
             self.blocks = nn.ModuleList(CrossBlock(dim, heads, dropout) for _ in range(blocks))
             self.fuse = nn.Sequential(nn.Linear(dim * 4, dim), nn.GELU(),
                                       nn.Dropout(dropout), nn.LayerNorm(dim))
-        # char refiner
+        # char refiner: CNN + BiGRU (sequence context for contiguous spans)
         self.char_pos = nn.Embedding(64, 32)                   # position inside token (capped)
         self.refine = nn.Sequential(
             nn.Conv1d(dim + 32, dim, 5, padding=2), nn.GELU(),
             nn.Conv1d(dim, dim, 5, padding=2), nn.GELU())
+        self.gru = nn.GRU(dim, dim // 2, batch_first=True, bidirectional=True)
         self.head_q = nn.Linear(dim, 1)
         self.head_p = nn.Linear(dim, 1)
         self.head_t = nn.Linear(dim, len(CATS))
@@ -85,6 +86,8 @@ class Connector(nn.Module):
         pos = self.char_pos(char_inpos.clamp(min=0, max=63))
         x = torch.cat([zc, pos], dim=-1).transpose(1, 2)        # [B,dim+32,Cmax]
         x = self.refine(x).transpose(1, 2)                      # [B,Cmax,dim]
+        g, _ = self.gru(x)
+        x = x + g                                               # residual BiGRU context
         valid = (tok2char >= 0)
         pooled = (x * valid.unsqueeze(-1)).sum(1) / valid.sum(1, keepdim=True).clamp(min=1)
         return (self.head_q(x).squeeze(-1), self.head_p(x).squeeze(-1),

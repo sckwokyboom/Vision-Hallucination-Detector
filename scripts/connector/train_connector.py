@@ -46,7 +46,10 @@ class CacheDS(Dataset):
 
     def __getitem__(self, i):
         it = self.items[i]
-        z = np.load(os.path.join(self.dir, f"{it.id}.npz"))
+        try:
+            z = np.load(os.path.join(self.dir, f"{it.id}.npz"))
+        except Exception:              # partial/corrupt cache file -> fall back to a neighbour
+            return self.__getitem__((i + 1) % len(self.items))
         V, H, tc = z["V"], z["H"], z["tok_char"]
         n_ch = min(int(z["answer_len"]), self.max_chars)
         # char-level gold
@@ -97,6 +100,33 @@ def collate(batch):
 
 
 # --------------------------------------------------------------------------- post/eval
+def hysteresis_spans(p, ptype, tau_hi, tau_lo, min_len=2):
+    """Enter a span at p>=tau_hi, extend while p>=tau_lo, drop spans shorter than min_len."""
+    spans, i, n = [], 0, len(p)
+    while i < n:
+        if p[i] >= tau_hi:
+            a = i
+            while a > 0 and p[a - 1] >= tau_lo:
+                a -= 1
+            b = i
+            while b < n and p[b] >= tau_lo:
+                b += 1
+            if b - a >= min_len:
+                seg = ptype[a:b].mean(0)
+                spans.append({"start": a, "end": b, "prob": float(p[a:b].mean()),
+                              "label": CATS[int(seg.argmax())]})
+            i = b
+        else:
+            i += 1
+    out = []
+    for sp in spans:
+        if out and out[-1]["label"] == sp["label"] and sp["start"] - out[-1]["end"] <= 1:
+            out[-1]["end"] = sp["end"]; out[-1]["prob"] = max(out[-1]["prob"], sp["prob"])
+        else:
+            out.append(sp)
+    return out
+
+
 def merge_spans(q, ptype, tau):
     spans, i, n = [], 0, len(q)
     while i < n:
@@ -134,14 +164,14 @@ def run_eval(model, dl, device, no_image=False, shuffle=False, taus=(0.05,0.1,0.
         ql, pl, tl, gl = model(H.to(device), V.to(device), t2c.to(device),
                                inpos.to(device), vmask.to(device))
         q = torch.sigmoid(ql).cpu().numpy(); p = torch.sigmoid(pl).cpu().numpy()
-        t = torch.sigmoid(tl).cpu().numpy()
+        t = torch.sigmoid(tl).cpu().numpy(); g = torch.sigmoid(gl).cpu().numpy()
         for b, it in enumerate(items):
             n = int(valid[b].sum())
-            per[it.id] = (it, q[b, :n], p[b, :n], t[b, :n])
+            per[it.id] = (it, q[b, :n], p[b, :n], t[b, :n], float(g[b]))
     ids = list(per)
     ga, pa = [], []
     for i in ids:
-        it, q, p, t = per[i]
+        it, q, p, t, g = per[i]
         ga += gold_char_probs(it.labels, len(q)); pa += p.tolist()
     gb = [1 if g > 0 else 0 for g in ga]
     roc = roc_auc_score(gb, pa) if len(set(gb)) > 1 else float("nan")
@@ -150,7 +180,7 @@ def run_eval(model, dl, device, no_image=False, shuffle=False, taus=(0.05,0.1,0.
     # label-aware calibration (Cor lbl approx): pearson over per-char per-type gold vs pred
     gt, pt = [], []
     for i in ids:
-        it, q, p, t = per[i]
+        it, q, p, t, g = per[i]
         yt = np.zeros((len(q), len(CATS)))
         for sp in it.labels:
             k = CATS.index(sp["label"]) if sp.get("label") in CATS else 4
@@ -159,15 +189,31 @@ def run_eval(model, dl, device, no_image=False, shuffle=False, taus=(0.05,0.1,0.
         gt += yt.flatten().tolist(); pt += t.flatten().tolist()
     cal_lbl = pearson(gt, pt)
     floor = float(np.mean([1.0 if not per[i][0].labels else 0.0 for i in ids]))
-    best = (0.3, -1)
-    for tau in taus:
-        ious = [char_iou(per[i][0].labels, merge_spans(per[i][2], per[i][3], tau), len(per[i][2]))
-                for i in ids]
-        m = float(np.mean(ious))
-        if m > best[1]:
-            best = (tau, m)
-    return per, dict(span_iou=best[1], tau=best[0], floor=floor, roc_auc=roc, pr_auc=pr,
-                     calib=cal, calib_lbl=cal_lbl)
+    best = {"iou": -1}
+    for g_thr in (0.0, 0.3, 0.5, 0.7):
+        for tau in taus:
+            ious = []
+            for i in ids:
+                it, q, p, t, g = per[i]
+                spans = [] if g < g_thr else hysteresis_spans(p, t, tau, 0.6 * tau)
+                ious.append(char_iou(it.labels, spans, len(p)))
+            m = float(np.mean(ious))
+            if m > best["iou"]:
+                best = {"iou": m, "tau": tau, "g_thr": g_thr}
+    # diagnostics at the best operating point
+    d_ious, clean_ok, n_clean = [], 0, 0
+    for i in ids:
+        it, q, p, t, g = per[i]
+        spans = [] if g < best["g_thr"] else hysteresis_spans(p, t, best["tau"], 0.6 * best["tau"])
+        if it.labels:
+            d_ious.append(char_iou(it.labels, spans, len(p)))
+        else:
+            n_clean += 1
+            clean_ok += (0 if spans else 1)
+    return per, dict(span_iou=best["iou"], tau=best["tau"], g_thr=best["g_thr"], floor=floor,
+                     dirty_iou=float(np.mean(d_ious)) if d_ious else 0.0,
+                     clean_empty=(clean_ok / n_clean) if n_clean else 1.0,
+                     roc_auc=roc, pr_auc=pr, cor=cal, cor_lbl=cal_lbl)
 
 
 # --------------------------------------------------------------------------- main
@@ -187,6 +233,7 @@ def main():
     ap.add_argument("--lambdas", default="1,1,0.5,0.5,0.2")
     ap.add_argument("--dev_frac", type=float, default=0.1)
     ap.add_argument("--seed", type=int, default=13)
+    ap.add_argument("--max_train", type=int, default=None, help="cap train items (learning curve)")
     args = ap.parse_args()
 
     l1, l2, l3, l4, l5 = [float(x) for x in args.lambdas.split(",")]
@@ -198,6 +245,8 @@ def main():
     tr_ids, dv_ids = group_split_by_image(items, dev_frac=args.dev_frac, seed=args.seed)
     tr = [it for it in items if it.id in set(tr_ids)]
     dv = [it for it in items if it.id in set(dv_ids)]
+    if args.max_train:
+        tr = tr[:args.max_train]
     tr_ds, dv_ds = CacheDS(tr, args.cache_dir), CacheDS(dv, args.cache_dir)
     print(f"[data] cached train={len(tr_ds)} dev={len(dv_ds)} (of {len(tr)}/{len(dv)})", flush=True)
     assert len(tr_ds) > 50, "too few cached items — run extract_features.py first"
@@ -251,9 +300,10 @@ def main():
     # official JSONL
     pred_path = os.path.join(args.out_dir, f"dev_pred_{tag}.jsonl")
     with open(pred_path, "w", encoding="utf-8") as f:
-        for i, (it, q, p, t) in per.items():
+        for i, (it, q, p, t, g) in per.items():
+            spans = [] if g < m["g_thr"] else hysteresis_spans(p, t, m["tau"], 0.6 * m["tau"])
             f.write(json.dumps({"id": i, "language": it.language, "response": it.response,
-                                "pred_labels": merge_spans(p, t, m["tau"]),
+                                "pred_labels": spans,
                                 "char_probs": [round(float(x), 3) for x in p]},
                                ensure_ascii=False) + "\n")
     with open(os.path.join(args.out_dir, f"summary_{tag}.json"), "w") as f:

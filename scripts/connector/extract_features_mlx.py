@@ -51,6 +51,7 @@ def main():
     ap.add_argument("--max_items", type=int, default=None)
     ap.add_argument("--probe", type=int, default=0)
     ap.add_argument("--no_image", action="store_true", help="true text-only cache (no image in prompt)")
+    ap.add_argument("--h_only", action="store_true", help="do not store V (image still in context; for linear-readout track, ~6x smaller)")
     args = ap.parse_args()
 
     layers = [int(x) for x in args.layers.split(",")]
@@ -135,7 +136,7 @@ def main():
         stack = np.stack([cap[l] for l in Ls], axis=1)        # [S, L, D]
 
         vis_pos = np.nonzero(ids == img_tok)[0]
-        V = stack[vis_pos]
+        V = stack[vis_pos][:0] if args.h_only else stack[vis_pos]
         H = stack[rt]
 
         if args.probe:
@@ -148,9 +149,11 @@ def main():
                 print("[probe done]"); return
             continue
 
-        np.savez_compressed(out_path, V=V.astype(np.float16), H=H.astype(np.float16),
+        tmp_path = out_path + ".tmp.npz"
+        np.savez_compressed(tmp_path, V=V.astype(np.float16), H=H.astype(np.float16),
                             tok_char=np.array(tok_char, dtype=np.int32),
                             answer_len=len(it.response))
+        os.replace(tmp_path, out_path)
         n_done += 1
         if n_done % 20 == 0:
             print(f"...{n_done} cached ({(time.time()-t0)/n_done:.1f}s/item)", flush=True)
