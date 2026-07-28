@@ -95,7 +95,108 @@ class Connector(nn.Module):
         pooled = (x * valid.unsqueeze(-1)).sum(1) / valid.sum(1, keepdim=True).clamp(min=1)
         return (self.head_q(x).squeeze(-1), self.head_p(x).squeeze(-1),
                 self.head_t(x), self.head_gate(pooled).squeeze(-1),
-                self.head_bio(x))
+                self.head_bio(x), x)
+
+
+class SetDecoder(nn.Module):
+    """DETR-style set-of-spans head: K learnable queries cross-attend to char features;
+    each query predicts (start dist, end dist, confidence/null, type, soft prob)."""
+
+    def __init__(self, dim, K=12, n_cats=len(CATS), layers=2, heads=8, dropout=0.1):
+        super().__init__()
+        self.K = K
+        self.queries = nn.Parameter(torch.randn(K, dim) * 0.02)
+        dl = nn.TransformerDecoderLayer(dim, heads, dim * 2, dropout=dropout,
+                                        batch_first=True)
+        self.dec = nn.TransformerDecoder(dl, layers)
+        self.px = nn.Linear(dim, dim)
+        self.qs = nn.Linear(dim, dim)
+        self.qe = nn.Linear(dim, dim)
+        self.conf = nn.Linear(dim, 1)
+        self.typ = nn.Linear(dim, n_cats)
+        self.sprob = nn.Linear(dim, 1)
+
+    def forward(self, x, pad_mask):
+        """x [B,C,dim]; pad_mask [B,C] True where padded. Returns
+        start/end logits [B,K,C], conf [B,K], type [B,K,cats], sprob [B,K]."""
+        B = x.shape[0]
+        q = self.dec(self.queries.unsqueeze(0).expand(B, -1, -1), x,
+                     memory_key_padding_mask=pad_mask)
+        xk = self.px(x)
+        sl = torch.einsum("bkd,bcd->bkc", self.qs(q), xk)
+        el = torch.einsum("bkd,bcd->bkc", self.qe(q), xk)
+        neg = torch.finfo(sl.dtype).min
+        sl = sl.masked_fill(pad_mask.unsqueeze(1), neg)
+        el = el.masked_fill(pad_mask.unsqueeze(1), neg)
+        return sl, el, self.conf(q).squeeze(-1), self.typ(q), self.sprob(q).squeeze(-1)
+
+
+def set_decode(sl, el, conf, typ, tau=0.5, max_len=150):
+    """Greedy NMS decode for ONE example (numpy in, list of spans out)."""
+    import numpy as np
+    order = np.argsort(-conf)
+    spans = []
+    for k in order:
+        if conf[k] < tau:
+            break
+        a = int(sl[k].argmax())
+        e_l = el[k].copy()
+        e_l[:a] = -1e30
+        e_l[a + max_len:] = -1e30
+        b = int(e_l.argmax()) + 1
+        if any(not (b <= s["start"] or a >= s["end"]) for s in spans):
+            continue                                      # overlap -> NMS drop
+        spans.append({"start": a, "end": b, "prob": float(conf[k]),
+                      "label": CATS[int(typ[k].argmax())]})
+    return sorted(spans, key=lambda s: s["start"])
+
+
+class SegmentScorer(nn.Module):
+    """Semi-Markov-style segment head: scores WHOLE candidate segments [a,b) jointly
+    (mean-pool + boundary feats + length bucket) -> (span score, type logits)."""
+
+    def __init__(self, dim, n_cats=len(CATS)):
+        super().__init__()
+        self.len_emb = nn.Embedding(24, 32)
+        self.mlp = nn.Sequential(nn.Linear(dim * 3 + 32, 256), nn.GELU(),
+                                 nn.Dropout(0.1), nn.Linear(256, 1 + n_cats))
+
+    @staticmethod
+    def _bucket(L):
+        import math
+        return min(23, int(math.log2(max(1, L)) * 3))
+
+    def forward(self, x, cands):
+        """x [C,dim] (single example); cands list of (a,b). -> scores [N], type [N,cats]."""
+        if not cands:
+            return x.new_zeros(0), x.new_zeros(0, 5)
+        pooled = torch.stack([x[a:b].mean(0) for a, b in cands])
+        first = torch.stack([x[a] for a, _ in cands])
+        last = torch.stack([x[b - 1] for _, b in cands])
+        lens = torch.tensor([self._bucket(b - a) for a, b in cands], device=x.device)
+        out = self.mlp(torch.cat([pooled, first, last, self.len_emb(lens)], -1))
+        return out[:, 0], out[:, 1:]
+
+
+def dp_select(cands, scores, theta):
+    """Weighted-interval-scheduling DP: pick non-overlapping candidates maximizing
+    sum(score - theta). cands: [(a,b,type_idx)], scores: list[float]."""
+    idx = sorted(range(len(cands)), key=lambda i: cands[i][1])
+    best, chosen = {0: (0.0, [])}, None
+    ends = [0]
+    dp = [(0.0, [])]
+    for i in idx:
+        a, b = cands[i][0], cands[i][1]
+        w = scores[i] - theta
+        # best dp state ending <= a
+        j = max(k for k in range(len(ends)) if ends[k] <= a)
+        take = (dp[j][0] + w, dp[j][1] + [i])
+        keep = dp[-1]
+        if take[0] > keep[0]:
+            dp.append(take); ends.append(b)
+        else:
+            dp.append(keep); ends.append(ends[-1])
+    return dp[-1][1]
 
 
 def tversky_loss(q_logit, m, valid, alpha=0.7, beta=0.3):
