@@ -199,6 +199,109 @@ def dp_select(cands, scores, theta):
     return dp[-1][1]
 
 
+class SemiCRF(nn.Module):
+    """TRUE semi-Markov CRF over segmentations: NLL = logZ - score(gold), with the
+    partition function over ALL valid segmentations via batched forward DP.
+    Factorized segment score phi(a,b) = s_start[a] + s_end[b-1] + mean(u[a:b]) + w_len(b-a)
+    keeps it O(n*Lmax) with cheap scalar ops (no per-candidate MLP)."""
+
+    def __init__(self, dim, max_len=120, n_len_buckets=24):
+        super().__init__()
+        self.max_len = max_len
+        self.st = nn.Linear(dim, 1)
+        self.en = nn.Linear(dim, 1)
+        self.um = nn.Linear(dim, 1)
+        self.oo = nn.Linear(dim, 1)
+        self.wlen = nn.Parameter(torch.zeros(n_len_buckets))
+
+    @staticmethod
+    def _lb(L):
+        import math
+        return min(23, int(math.log2(max(1, L)) * 3))
+
+    def scores(self, x):
+        """x [B,C,dim] -> st,en,u,o [B,C]; U prefix sums [B,C+1]."""
+        st = self.st(x).squeeze(-1)
+        en = self.en(x).squeeze(-1)
+        u = self.um(x).squeeze(-1)
+        o = self.oo(x).squeeze(-1)
+        U = torch.cat([torch.zeros_like(u[:, :1]), u.cumsum(1)], 1)
+        return st, en, u, o, U
+
+    def seg_score_vec(self, st, en, U, j, Ls):
+        """phi(j-L, j) for a vector of L values (torch tensor Ls)."""
+        a = j - Ls
+        lb = torch.tensor([self._lb(int(L)) for L in Ls], device=st.device)
+        return (st[:, a] if st.dim() == 2 else st[a]) +                (en[:, j - 1:j] if en.dim() == 2 else en[j - 1]) +                ((U[:, j:j + 1] - U[:, a]) / Ls if U.dim() == 2 else (U[j] - U[a]) / Ls) +                self.wlen[lb]
+
+    def nll(self, x, valid, segs_list):
+        """Batched NLL. x [B,C,dim]; valid [B,C]; segs_list: per-example [(a,b), ...]."""
+        B, C, _ = x.shape
+        st, en, u, o, U = self.scores(x)
+        n_i = valid.sum(1).long()
+        alphas = [x.new_zeros(B)]                                  # alpha[0] = 0
+        for j in range(1, C + 1):
+            Lmax = min(j, self.max_len)
+            Ls = torch.arange(1, Lmax + 1, device=x.device)
+            a_idx = j - Ls                                          # [Lmax]
+            seg = (st[:, a_idx] + en[:, j - 1].unsqueeze(1)
+                   + (U[:, j].unsqueeze(1) - U[:, a_idx]) / Ls.float()
+                   + self.wlen[torch.clamp((torch.log2(Ls.float()) * 3).long(), max=23)])
+            hist = torch.stack([alphas[int(a)] for a in a_idx], 1)  # [B, Lmax]
+            cand = torch.cat([(alphas[j - 1] + o[:, j - 1]).unsqueeze(1), hist + seg], 1)
+            alphas.append(torch.logsumexp(cand, 1))
+        # gold scores + pick logZ at each example's length
+        nll = x.new_zeros(())
+        cnt = 0
+        for b in range(B):
+            n = int(n_i[b])
+            if n < 2:
+                continue
+            logZ = alphas[n][b]
+            gold = x.new_zeros(())
+            inseg = torch.zeros(n, dtype=torch.bool)
+            for (a, e) in segs_list[b]:
+                e = min(e, n)
+                if e - a < 1 or a >= n:
+                    continue
+                Lg = torch.tensor([e - a], device=x.device)
+                gold = gold + (st[b, a] + en[b, e - 1]
+                               + (U[b, e] - U[b, a]) / float(e - a)
+                               + self.wlen[self._lb(e - a)])
+                inseg[a:e] = True
+            gold = gold + o[b, :n][~inseg.to(x.device)].sum()
+            nll = nll + (logZ - gold) / n          # per-char normalization: keeps the
+            cnt += 1                                # CRF term on the same scale as BCE
+        return nll / max(cnt, 1)
+
+    @torch.no_grad()
+    def viterbi(self, x1, n, bias=0.0):
+        """Exact best segmentation for ONE example. x1 [C,dim]; returns [(a,b), ...]."""
+        st, en, u, o, U = self.scores(x1.unsqueeze(0))
+        st, en, o, U = st[0], en[0], o[0], U[0]
+        NEG = -1e30
+        alpha = [0.0] + [NEG] * n
+        back = [None] * (n + 1)
+        for j in range(1, n + 1):
+            best, arg = alpha[j - 1] + float(o[j - 1]), ("O", j - 1)
+            Lmax = min(j, self.max_len)
+            for L in range(1, Lmax + 1):
+                a = j - L
+                sc = (alpha[a] + float(st[a]) + float(en[j - 1])
+                      + float(U[j] - U[a]) / L + float(self.wlen[self._lb(L)]) + bias)
+                if sc > best:
+                    best, arg = sc, ("S", a)
+            alpha[j] = best
+            back[j] = arg
+        segs, j = [], n
+        while j > 0:
+            kind, a = back[j]
+            if kind == "S":
+                segs.append((a, j))
+            j = a if kind == "S" else j - 1
+        return segs[::-1]
+
+
 def tversky_loss(q_logit, m, valid, alpha=0.7, beta=0.3):
     """Precision-weighted soft Tversky: alpha>beta penalizes FP harder than FN."""
     q = torch.sigmoid(q_logit) * valid

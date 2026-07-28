@@ -30,7 +30,7 @@ from shroom.metrics import gold_char_probs, char_iou, pearson   # noqa: E402
 from sklearn.metrics import roc_auc_score, average_precision_score  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from model import (Connector, SetDecoder, set_decode, SegmentScorer, dp_select,  # noqa: E402
+from model import (Connector, SetDecoder, set_decode, SegmentScorer, dp_select, SemiCRF,  # noqa: E402
                    soft_jaccard_loss, tversky_loss, ranking_loss, CATS)
 
 
@@ -250,9 +250,10 @@ def merge_spans(q, ptype, tau):
 
 
 @torch.no_grad()
-def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hyst", taus=None, setdec=None, segsc=None):
+def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hyst", taus=None, setdec=None, segsc=None, crf=None):
     if taus is None:
-        taus = ((0.3, 0.5, 0.7, 0.9, 0.95) if decoder == "set" else
+        taus = ((-1.0, -0.5, 0.0, 0.5, 1.0) if decoder == "crf" else
+                (0.3, 0.5, 0.7, 0.9, 0.95) if decoder == "set" else
                 (0.2, 0.35, 0.5, 0.65, 0.8) if decoder == "seg" else
                 (0.0,) if decoder == "bio" else
                 (0.4, 0.5, 0.6, 0.7, 0.8) if decoder == "v2" else
@@ -272,6 +273,21 @@ def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hys
         t = torch.sigmoid(tl).cpu().numpy(); g = torch.sigmoid(gl).cpu().numpy()
         bt = bl.argmax(-1).cpu().numpy()
         qcand = [None] * len(items)
+        if crf is not None:
+            for b in range(len(items)):
+                n3 = int(valid[b].sum())
+                if n3 < 2:
+                    qcand[b] = {}
+                    continue
+                by_bias = {}
+                for bias in (-1.0, -0.5, 0.0, 0.5, 1.0):
+                    segs4 = crf.viterbi(feats[b], n3, bias=bias)
+                    by_bias[bias] = [
+                        {"start": a4, "end": b5,
+                         "prob": float(p[b, a4:b5].mean()) if b5 > a4 else 0.0,
+                         "label": CATS[int(t[b, a4:b5].mean(0).argmax())]}
+                        for a4, b5 in segs4]
+                qcand[b] = by_bias
         if segsc is not None:
             for b in range(len(items)):
                 n3 = int(valid[b].sum())
@@ -339,6 +355,8 @@ def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hys
     cal_lbl = pearson(gt, pt)
     floor = float(np.mean([1.0 if not per[i][0].labels else 0.0 for i in ids]))
     def decode(p, t, g, tau, g_thr, bt=None, qsp=None):
+        if decoder == "crf":
+            return (qsp or {}).get(tau, [])
         if decoder == "seg":
             if not qsp:
                 return []
@@ -372,7 +390,7 @@ def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hys
         if decoder in ("hyst", "gate_hyst"):
             return hysteresis_spans(p, t, tau, 0.6 * tau)
         return merge_spans(p, t, tau)                     # simple threshold
-    if decoder in ("set", "seg"):
+    if decoder in ("set", "seg", "crf"):
         g_grid = (0.0,)
     elif decoder == "bio":
         g_grid = (0.0, 0.3, 0.5, 0.7)
@@ -441,11 +459,11 @@ def main():
     ap.add_argument("--seed", type=int, default=13)
     ap.add_argument("--max_train", type=int, default=None, help="cap train items (learning curve)")
     ap.add_argument("--eval_ids", default=None, help="json file with {'tune_dev': [...]} to eval on")
-    ap.add_argument("--decoder", choices=["simple","gate","hyst","gate_hyst","v2","bio","set","seg"], default="gate_hyst")
+    ap.add_argument("--decoder", choices=["simple","gate","hyst","gate_hyst","v2","bio","set","seg","crf"], default="gate_hyst")
     ap.add_argument("--tversky", action="store_true", help="precision-weighted Tversky instead of soft-Jaccard")
     ap.add_argument("--no_type_loss", action="store_true")
     ap.add_argument("--bio", action="store_true", help="BIO boundary head + loss")
-    ap.add_argument("--head", choices=["none", "set", "seg"], default="none",
+    ap.add_argument("--head", choices=["none", "set", "seg", "crf"], default="none",
                     help="'set' = DETR-style set-of-spans decoder (Hungarian matching)")
     ap.add_argument("--set_k", type=int, default=12)
     ap.add_argument("--l_set", type=float, default=1.0)
@@ -501,12 +519,13 @@ def main():
           f"(backbone frozen, cached)", flush=True)
     setdec = SetDecoder(args.dim, K=args.set_k).to(device) if args.head == "set" else None
     segsc = SegmentScorer(args.dim).to(device) if args.head == "seg" else None
+    crf = SemiCRF(args.dim).to(device) if args.head == "crf" else None
     params = (list(model.parameters()) + (list(setdec.parameters()) if setdec else [])
-              + (list(segsc.parameters()) if segsc else []))
+              + (list(segsc.parameters()) if segsc else []) + (list(crf.parameters()) if crf else []))
     opt = torch.optim.AdamW(params, lr=args.lr)
     bce = nn.BCEWithLogitsLoss(reduction="none")
 
-    tag = f"{args.arch}{'_noimg' if args.no_image else ''}_{args.decoder}{'_tv' if args.tversky else ''}{'_bio' if args.bio else ''}{'_gc' if args.gate_consistency else ''}{'_ctr' if args.contrastive else ''}{'_set' if args.head=='set' else ''}{'_seg' if args.head=='seg' else ''}{'_notype' if args.no_type_loss else ''}{'_nogru' if args.no_gru else ''}_s{args.seed}"
+    tag = f"{args.arch}{'_noimg' if args.no_image else ''}_{args.decoder}{'_tv' if args.tversky else ''}{'_bio' if args.bio else ''}{'_gc' if args.gate_consistency else ''}{'_ctr' if args.contrastive else ''}{'_set' if args.head=='set' else ''}{'_seg' if args.head=='seg' else ''}{'_crf' if args.head=='crf' else ''}{'_notype' if args.no_type_loss else ''}{'_nogru' if args.no_gru else ''}_s{args.seed}"
     t0 = time.time()
     for ep in range(1, 0 if args.eval_only else args.epochs + 1):
         model.train(); tot = nb = 0
@@ -612,17 +631,20 @@ def main():
                             tp2[pos], torch.tensor([tids[i2] for i2 in pos], device=device))
                     ng += 1
                 loss = loss + args.l_set * gloss / max(ng, 1)
+            if crf is not None:
+                seg_ab = [[(a, b4) for (a, b4, ti, pr) in sl_] for sl_ in seg_l]
+                loss = loss + args.l_set * crf.nll(feats, valid, seg_ab)
             opt.zero_grad(); loss.backward(); opt.step()
             tot += loss.item(); nb += 1
             if nb % 100 == 0:
                 print(f"[ep {ep} b{nb}/{len(tr_dl)}] loss={tot/nb:.4f}", flush=True)
-        _, m = run_eval(model, dv_dl, device, no_image=args.no_image, decoder=args.decoder, setdec=setdec, segsc=segsc)
+        _, m = run_eval(model, dv_dl, device, no_image=args.no_image, decoder=args.decoder, setdec=setdec, segsc=segsc, crf=crf)
         print(f"[ep {ep}] loss={tot/nb:.4f} dev: iou={m['span_iou']:.4f} (fl={m['floor']:.3f}, "
               f"tau={m['tau']}, g={m['g_thr']}) dirty={m['dirty_iou']:.3f} cleanOK={m['clean_empty']:.2f} "
               f"gateRec={m['dirty_gate_recall']:.2f} corR={m['cor_raw']:.3f} corS={m['cor_submission']:.3f} "
               f"[{(time.time()-t0)/60:.1f}m]", flush=True)
 
-    per, m = run_eval(model, dv_dl, device, no_image=args.no_image, decoder=args.decoder, setdec=setdec, segsc=segsc)
+    per, m = run_eval(model, dv_dl, device, no_image=args.no_image, decoder=args.decoder, setdec=setdec, segsc=segsc, crf=crf)
     results = {"variant": tag, "metrics": m}
     if args.eval_shuffle and not args.no_image:
         _, ms = run_eval(model, dv_dl, device, shuffle=True, decoder=args.decoder)
@@ -632,7 +654,9 @@ def main():
     pred_path = os.path.join(args.out_dir, f"dev_pred_{tag}.jsonl")
     with open(pred_path, "w", encoding="utf-8") as f:
         for i, (it, q, p, t, g, bt, qsp) in per.items():
-            if args.decoder == "seg":
+            if args.decoder == "crf":
+                spans = (qsp or {}).get(m["tau"], [])
+            elif args.decoder == "seg":
                 cands3 = [(a, b2, ti) for _, a, b2, ti in (qsp or [])]
                 scores3 = [c[0] for c in (qsp or [])]
                 sel = dp_select(cands3, scores3, m["tau"]) if cands3 else []
