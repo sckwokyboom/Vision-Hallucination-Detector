@@ -133,3 +133,14 @@ significant) and does NOT move decoded IoU. Per the pre-registered rule: stay on
 invest in training signals (v3), not precision. bf16 point comes from the H100 ladder.
 Also: v2 peak-decoder swap on frozen weights = null (0.3045 vs 0.3062) — the oracle
 threshold gap is not reachable by post-hoc decoding; fields must get sharper via training.
+
+## 8. Decode-head comparison (Mac, full train 3440, tune-202)
+
+| head | span_iou | dirty | cleanOK | corR | verdict |
+|---|---|---|---|---|---|
+| v1 gate_hyst (per-char threshold) | 0.304 | 0.223 | 0.60 | 0.390 | baseline |
+| v3 BIO + contrastive + consistency + Tversky | **0.320** | 0.164 | **0.91** | 0.389 | best so far (+0.016 paired, ns) |
+| DETR set-of-spans (12 queries, Hungarian) | 0.213 (floor) | 0.000 | 1.00 | 0.34@ep7 | **NEGATIVE: conf head collapsed to all-null in 7 epochs; loss not converging (DETR-style slow convergence + conf class imbalance + CE-over-1200-positions loss scale). Aborted; would need denoising-queries/aux-loss tricks + far more epochs.** |
+| segment-scorer + DP (semi-CRF approx.) | running | | | | |
+
+v2 peak-decoder swap on frozen weights was also null earlier (0.3045 vs 0.3062).
