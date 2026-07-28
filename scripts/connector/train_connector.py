@@ -122,7 +122,7 @@ def merge_spans(q, ptype, tau):
 
 
 @torch.no_grad()
-def run_eval(model, dl, device, no_image=False, shuffle=False, taus=(0.1,0.2,0.3,0.4,0.5,0.6)):
+def run_eval(model, dl, device, no_image=False, shuffle=False, taus=(0.05,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95)):
     model.eval()
     per = {}
     prev_V = None
