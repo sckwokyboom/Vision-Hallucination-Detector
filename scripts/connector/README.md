@@ -1,62 +1,59 @@
-# Task-specific connector over frozen Gemma 4 12B
+# Task-specific decoder over frozen Gemma 4 12B
 
-Implementation of the connector spec: a small trainable cross-attention module over a
-**frozen** Gemma 4 12B that, for every character of a candidate answer, predicts hard-span
-membership `q_c`, soft hallucination probability `p_c`, five type probabilities `p_{c,k}`,
-and an auxiliary clean/dirty gate. Targets the official character-level IoU, Cor, Cor-lbl.
+Train a small span decoder on cached hidden states of a **frozen** Gemma 4 12B
+(encoder-free `gemma4_unified`). Two stages: extract features once, then iterate on the
+decoder in minutes. Works fully on Apple Silicon via MLX.
 
-## Design
-
-**Two stages, so ablations are cheap:**
-
-1. `extract_features.py` — one frozen forward pass per item; caches to `.npz`:
-   `V` (hidden states at visual-token positions) and `H` (hidden states of the **review
-   copy** of the answer — the prompt repeats the answer so every review token attends to
-   the full original), at layers `{24,32,40,48}` (learnable softmax mix at train time).
-   Prompt: `<image> Question: … Candidate answer: … Review token by token: …`
-2. `train_connector.py` — trains on the cache. Architecture (`model.py`):
-   `Q=Lin(H), K/V=Lin(V)` → 2–4 cross-attention blocks (residual+LN, 8 heads, dropout 0.1)
-   → fusion MLP over `[H, C, H−C, H⊙C]` → char scatter via tokenizer offsets + in-token
-   position embedding + 1D-CNN refiner → four heads.
-
-**Loss** (per-example averaged, then batch): `λ1·BCE(p_c, y_c)` soft probs + `λ2·soft-Jaccard(q_c, m_c)`
-(IoU surrogate) + `λ3·pairwise ranking` (Cor surrogate) + `λ4·BCE types` + `λ5·BCE gate`.
-Gold: `y_c` = annotator prob of covering spans; `y_{c,k}` per type.
-
-**Postprocessing:** dev threshold sweep on `q_c` → drop below-threshold chars → argmax type
-→ merge same-type neighbours → official JSONL `{"start","end","prob","label"}`.
-
-## Run (single A100)
+## Pipeline (Mac / MLX)
 
 ```bash
-bash run_connector.sh ../Shroom-Vision google/gemma-4-12B-it
+# 1) cache features (H of the review-copy answer; layers 24,32,40,47; ~2.7s/item on M4 Pro)
+python scripts/connector/extract_features_mlx.py \
+  --train_file ../Shroom-Vision/distrib/shroom-vision.train.en.labeled.jsonl \
+  --image_dir ../Shroom-Vision/images --out_dir results/cache --h_only
+#    --no_image   -> true text-only control cache
+#    --probe 2    -> validate token alignment first
+#    atomic writes; resumable (existing files skipped)
+
+# 2) train / ablate the decoder (minutes per run on the cache)
+python scripts/connector/train_connector.py \
+  --train_file ../Shroom-Vision/distrib/shroom-vision.train.en.labeled.jsonl \
+  --eval_ids splits/en.eval_protocol.json --cache_dir results/cache \
+  --out_dir results/run --arch linear --seed 13 --epochs 12
+#    --decoder simple|gate|hyst|gate_hyst   (span decoding ablations)
+#    --no_gru | --max_train N | --eval_only --init_from model.pt
+
+# full protocol (3 seeds + decoder ablations + learning curve + controls):
+bash scripts/connector/run_fullscale.sh
+
+# 3) manual error analysis: self-contained HTML (image + gold vs model highlighting)
+python scripts/connector/make_inspection.py --gold <gold.jsonl> --pred <pred.jsonl> \
+  --image_dir ../Shroom-Vision/images --out inspect.html
 ```
 
-Runs: probe (validates token alignment) → subset cache (1200 items, quick signal) →
-grid: linear readout baseline / main connector (+ shuffled-image eval) / text-only.
-Stage 2 takes minutes per variant on cached features; rerun stage 1b without
-`--max_items` for the full cache afterwards.
+## Method
 
-## Experiment grid & success criteria
+Prompt repeats the answer (`Review token by token:`) so every review token attends to the
+full answer + image inside frozen Gemma; hidden states of the review copy are cached
+(`.npz`: H [T,L,D], tok->char offsets). The decoder: learnable layer mix -> (linear readout
+| cross-attention connector) -> char scatter + CNN + residual BiGRU -> heads: soft prob
+(trained on annotator probabilities -> Cor), hard-span, 5 types, clean/dirty gate.
+Decoding: gate + hysteresis thresholds, swept on the tune split.
 
-| variant | purpose |
-|---|---|
-| `--arch linear` | frozen readout baseline |
-| `--arch connector` | main method |
-| `--no_image` | text-only control |
-| `--eval_shuffle` | shuffled-image grounding check |
-| `--processor_kwargs` / `--max_side` | resolution ablation (visual token count — verify via probe) |
+## Evaluation protocol
 
-Success = connector beats the linear readout on span_iou / calib / calib_lbl; correct-image
-beats text-only and shuffled; span_iou clears the predict-nothing floor; gains hold on the
-image-grouped held-out split (and across seeds / paired bootstrap).
+`splits/en.eval_protocol.json` freezes an **image-disjoint** split of the dev set:
+`tune_dev` (202 items) for all tuning, `heldout` (157) untouched for a single final run.
+Confidence intervals should be cluster-bootstrapped by image.
 
-## Notes / knowns
+## Status (en, tune-202, floor 0.213)
 
-- Visual-token count depends on the HF processor settings; the probe prints it. The
-  280-vs-1120 ablation maps to processor/pan-scan configuration (`--processor_kwargs`).
-- Cache size: ~[visual_tokens × 4 layers × hidden × 2B] per item; with 4 cached layers and
-  ~1120 tokens this is tens of MB/item — use the subset cache first, or cache fewer layers
-  (`--layers 32`).
-- The token↔position alignment between the offsets tokenizer pass and the processor pass is
-  handled via a length shift; the probe prints it (`shift=`) — verify it is constant.
+- Trained linear readout + gated hysteresis decoder: **span_iou 0.306 / 0.288 (two seeds),
+  Cor_raw ~0.39-0.41** - vs the best zero-shot HYBRID (0.273 IoU / 0.164 Cor) and the
+  predict-nothing floor (cluster-bootstrap CI [0.247, 0.362], P(>floor)=1.0).
+- Oracle decomposition (same probability fields): per-item threshold 0.46, multi-span 0.71
+  -> the dominant loss is thresholding + span structure, not representations.
+- Known model issues: spans ~7x longer than gold (median 66 vs 9), type head collapses to
+  `invention`, long answers dilute the signal. Next iteration: character-level multi-span
+  boundary heads, precision-oriented (Tversky) loss, soft token-derived gate, contrastive
+  pairs within same-image groups.
