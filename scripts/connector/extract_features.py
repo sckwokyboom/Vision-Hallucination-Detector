@@ -38,8 +38,12 @@ def find_subseq(hay, needle):
     return -1
 
 
-def load_model(model_id, quant):
-    kw = dict(device_map="auto", trust_remote_code=True)
+def load_model(model_id, quant, device="auto"):
+    # device="auto" lets accelerate shard/offload across every visible GPU; an explicit
+    # "cuda:N" pins the whole model to one card and fails loudly instead of silently
+    # spilling to CPU (which turns a 30-minute extraction into an overnight one).
+    kw = dict(device_map=("auto" if device == "auto" else {"": device}),
+              trust_remote_code=True)
     if quant == "bf16":
         kw["dtype"] = torch.bfloat16
     else:
@@ -72,14 +76,24 @@ def main():
     ap.add_argument("--no_image", action="store_true")
     ap.add_argument("--max_items", type=int, default=None)
     ap.add_argument("--probe", type=int, default=0)
+    ap.add_argument("--device", default="auto",
+                    help="'auto' (shard across all visible GPUs) or a single device such as "
+                         "'cuda:0'. With CUDA_VISIBLE_DEVICES=3, 'cuda:0' IS physical GPU 3.")
     args = ap.parse_args()
 
     layers = [int(x) for x in args.layers.split(",")]
     os.makedirs(args.out_dir, exist_ok=True)
-    print(f"[load] {args.model_id} quant={args.quant}", flush=True)
+    if args.device != "auto" and args.device.startswith("cuda"):
+        idx = int(args.device.split(":")[1]) if ":" in args.device else 0
+        n = torch.cuda.device_count()
+        if idx >= n:
+            raise SystemExit(f"--device {args.device}: only {n} CUDA device(s) visible "
+                             f"(CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES', '<unset>')})")
+        print(f"[gpu ] {args.device} = {torch.cuda.get_device_name(idx)}", flush=True)
+    print(f"[load] {args.model_id} quant={args.quant} device={args.device}", flush=True)
     processor = AutoProcessor.from_pretrained(args.model_id, trust_remote_code=True)
     tok = processor.tokenizer
-    model = load_model(args.model_id, args.quant)
+    model = load_model(args.model_id, args.quant, args.device)
 
     img_tok = None
     for attr in ("image_token_id", "image_token_index"):

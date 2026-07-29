@@ -84,9 +84,15 @@ python3.13 -m venv .venv && . .venv/bin/activate
 pip install -r requirements/core.txt
 python -m pytest                                  # 39 tests, no model needed
 
-# get the data (see data/README.md), then freeze the dev split and score baselines:
+bash scripts/get_data.sh                           # download + unpack the dataset (see data/README.md)
 python -m shroom.make_split                        # image-grouped dev split per language
 python -m shroom.run_eval --gold splits/dev.en.jsonl --pred <predictions.jsonl>
+```
+
+Training on a GPU box, pinned to one card:
+
+```bash
+bash scripts/connector/run_train_h100.sh --gpu 0   # --dry-run first to see the resolved plan
 ```
 
 Run a VLM on Apple Silicon (MLX):

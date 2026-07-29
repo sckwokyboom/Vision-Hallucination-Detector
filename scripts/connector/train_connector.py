@@ -483,12 +483,27 @@ def main():
     ap.add_argument("--no_gru", action="store_true")
     ap.add_argument("--eval_only", action="store_true")
     ap.add_argument("--init_from", default=None, help="load model weights before train/eval")
+    ap.add_argument("--device", default=None,
+                    help="'cuda:N' / 'cpu' / 'mps'. Default: cuda if available, else cpu "
+                         "('mps' stays opt-in). With CUDA_VISIBLE_DEVICES=3, 'cuda:0' IS GPU 3.")
     args = ap.parse_args()
 
     l1, l2, l3, l4, l5 = [float(x) for x in args.lambdas.split(",")]
     os.makedirs(args.out_dir, exist_ok=True)
     torch.manual_seed(args.seed); random.seed(args.seed); np.random.seed(args.seed)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    # Default is unchanged (cuda if present, else cpu) — the Mac results were produced on
+    # cpu, so 'mps' stays opt-in via --device to keep those runs reproducible.
+    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    if device.startswith("cuda"):
+        idx = int(device.split(":")[1]) if ":" in device else 0
+        if not torch.cuda.is_available() or idx >= torch.cuda.device_count():
+            raise SystemExit(f"--device {device} unavailable (visible CUDA devices: "
+                             f"{torch.cuda.device_count() if torch.cuda.is_available() else 0}, "
+                             f"CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES', '<unset>')})")
+        torch.cuda.set_device(idx)
+        print(f"[gpu ] {device} = {torch.cuda.get_device_name(idx)}", flush=True)
+    else:
+        print(f"[gpu ] running on {device}", flush=True)
 
     items = load_jsonl(args.train_file)
     tr_ids, dv_ids = group_split_by_image(items, dev_frac=args.dev_frac, seed=13)  # split seed FIXED

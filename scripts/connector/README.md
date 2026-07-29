@@ -31,6 +31,23 @@ python scripts/connector/make_inspection.py --gold <gold.jsonl> --pred <pred.jso
   --image_dir ../Shroom-Vision/images --out inspect.html
 ```
 
+## Pipeline (CUDA / H100)
+
+```bash
+bash scripts/get_data.sh --data-dir /scratch/$USER/Shroom-Vision   # login node: needs network
+bash scripts/connector/run_train_h100.sh --gpu 0 --data-dir /scratch/$USER/Shroom-Vision
+```
+
+`--gpu N` exports `CUDA_VISIBLE_DEVICES=N` **and** passes `--device cuda:0` down, so both
+stages land on that one card — masking also pins accelerate/bitsandbytes, which `--device`
+alone does not. `--gpu all` keeps the old sharding behaviour, `--dry-run` prints the resolved
+plan and exits. The runner downloads the dataset itself if it is missing. Same flags on the
+precision ladder (`run_quant_h100.sh --gpu 1`).
+
+Budget ~15 GB of scratch for the bf16 feature cache (3.3 MB/item × ~3800 items) and keep it
+off `$HOME`. Gemma 4 12B is license-gated on HF: either `huggingface-cli login` or pass a
+local weights path via `--model`.
+
 ## Method
 
 Prompt repeats the answer (`Review token by token:`) so every review token attends to the

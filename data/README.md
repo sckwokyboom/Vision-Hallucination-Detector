@@ -5,6 +5,18 @@ closed test set). Obtain it from the shared task and place it as described below
 
 ## Get the data
 
+Automated path — downloads, verifies and unpacks everything into the layout below:
+
+```bash
+bash scripts/get_data.sh                      # or --data-dir /scratch/$USER/Shroom-Vision
+```
+
+Idempotent and resumable (`curl -C -`); `--no-images` fetches the 16 MB of annotations only,
+`--force` re-fetches. On a cluster run it on a **login node** — compute nodes usually have no
+outbound network. The archives are kept, so re-extracting later needs no network.
+
+Manual path, if you already have the archives or the automated one is blocked:
+
 SHROOM-visions 2026 shared task: <https://helsinki-nlp.github.io/shroom/2026>
 
 You need two things:
