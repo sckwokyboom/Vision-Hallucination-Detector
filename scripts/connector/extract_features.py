@@ -25,9 +25,45 @@ from shroom.data import load_jsonl                      # noqa: E402
 from transformers import AutoProcessor, AutoModelForImageTextToText  # noqa: E402
 
 
+def review_body(response):
+    """The response exactly as it survives chat templating.
+
+    apply_chat_template rstrips the message content. The review copy ends the prompt, so
+    a response with trailing whitespace loses it there — and then the tokenisation of the
+    RAW response no longer occurs in input_ids and the id-subsequence search below fails
+    (54/3799 en responses end in 1-4 newlines; train-en-414 is the first). Canonicalising
+    here makes the string we search for the string that is actually present.
+
+    Only the tail is stripped: gold spans are character offsets into the raw response, so
+    trimming the front would silently shift every label. No gold span in any language
+    reaches past the rstrip boundary, so nothing supervisable is lost.
+    """
+    return response.rstrip()
+
+
 def build_text(prompt, response):
-    return (f"Question: {prompt}\nCandidate answer: {response}\n"
-            f"Review token by token:\n{response}")
+    body = review_body(response)
+    return (f"Question: {prompt}\nCandidate answer: {body}\n"
+            f"Review token by token:\n{body}")
+
+
+def encode_review(tok, body):
+    """Token ids for the review copy, plus each token's character span in `body`.
+
+    Spans come from the tokenizer's own offset mapping. The obvious alternative —
+    decode each token and str.find() it — silently corrupts non-ASCII text: a
+    byte-fallback token that splits a multi-byte character (CJK, accented Latin)
+    decodes to a replacement character that does not occur in `body`, the search
+    misses, the write cursor advances anyway, and every later offset in that item is
+    wrong. Measured on the corpus: 32 fr/it/zh items, offsets running up to 1.7x past
+    the end of the response; en never triggered it, which is why it survived review.
+
+    The leading "\\n" anchors the review copy to the same token boundary the prompt
+    has; its offsets are shifted out and it is dropped by the whitespace skip below.
+    """
+    enc = tok("\n" + body, add_special_tokens=False, return_offsets_mapping=True)
+    offs = [(a - 1, b - 1) for a, b in enc["offset_mapping"]]
+    return enc["input_ids"], offs
 
 
 def find_subseq(hay, needle):
@@ -104,12 +140,14 @@ def main():
         items = items[:args.max_items]
 
     t0, n_done = time.time(), 0
+    failed, no_image, empty = [], [], []
     for idx, it in enumerate(items):
         out_path = os.path.join(args.out_dir, f"{it.id}.npz")
         if os.path.exists(out_path) and not args.probe:
             continue
         img_path = os.path.join(args.image_dir, it.image_name)
         if not os.path.exists(img_path):
+            no_image.append(it.id)
             continue
         image = None
         if not args.no_image:
@@ -132,23 +170,29 @@ def main():
         ids = inputs["input_ids"][0].tolist()
 
         # locate the review copy by id-subsequence (robust to template specials)
-        ans_ids = tok.encode("\n" + it.response, add_special_tokens=False)
+        body = review_body(it.response)
+        if not body.strip():
+            # 4 responses in the corpus are whitespace only. There is nothing to label,
+            # so there are no features to cache — legitimate, unlike the skips below.
+            empty.append(it.id)
+            continue
+        ans_ids, offs = encode_review(tok, body)
         pos, trim = find_subseq(ids, ans_ids), 0
         while pos < 0 and trim < 3:
             trim += 1
             pos = find_subseq(ids, ans_ids[trim:])
-        assert pos >= 0, f"review copy not found for {it.id}"
-        rt = list(range(pos, pos + len(ans_ids[trim:])))
-        while rt and not tok.decode([ids[rt[0]]]).strip():
+        if pos < 0:
+            # One pathological item must not kill a 40-minute extraction, but a partial
+            # cache must never pass for a complete one either: collect and fail at the end.
+            failed.append(it.id)
+            print(f"[warn] review copy not found for {it.id} — skipped", flush=True)
+            continue
+        # the match guarantees rt[i] and offs[trim+i] are the same token
+        rt, tok_char = list(range(pos, pos + len(ans_ids[trim:]))), offs[trim:]
+        while rt and not body[max(0, tok_char[0][0]):max(0, tok_char[0][1])].strip():
             rt.pop(0)
-        tok_char, cursor = [], 0
-        for k in rt:
-            piece = tok.decode([ids[k]])
-            j = it.response.find(piece, cursor) if piece.strip() else cursor
-            if j < 0:
-                j = cursor
-            tok_char.append((j, j + len(piece)))
-            cursor = j + len(piece)
+            tok_char = tok_char[1:]
+        tok_char = [(max(0, a), max(0, b)) for a, b in tok_char]
 
         with torch.no_grad():
             out = model(**inputs, output_hidden_states=True)
@@ -180,6 +224,22 @@ def main():
         if n_done % 25 == 0:
             print(f"...{n_done} ({(time.time()-t0)/n_done:.2f}s/item)", flush=True)
     print(f"[done] {n_done} new -> {args.out_dir} in {(time.time()-t0)/60:.1f} min", flush=True)
+
+    # A skipped item is a hole in the cache, and CacheDS drops holes without complaining.
+    # Record every skip; abort only on the ones that indicate a bug or missing data.
+    if failed or no_image or empty:
+        rep = os.path.join(args.out_dir, "_skipped.json")
+        with open(rep, "w") as f:
+            json.dump({"unaligned": failed, "missing_image": no_image,
+                       "empty_response": empty}, f, indent=2)
+        print(f"\n[SKIPPED] {len(failed)} unaligned, {len(no_image)} missing image, "
+              f"{len(empty)} empty response -> {rep}", flush=True)
+        for i in (failed + no_image)[:10]:
+            print(f"  {i}", flush=True)
+    if failed or no_image:
+        raise SystemExit(
+            f"ERROR: {len(failed) + len(no_image)} item(s) produced no features. The cache "
+            f"is incomplete; fix the cause (see {rep}) and re-run — extraction is resumable.")
 
 
 if __name__ == "__main__":
