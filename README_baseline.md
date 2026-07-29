@@ -25,6 +25,20 @@ pip install -r requirements-mlx.txt
 
 Run the tests: `python -m pytest`  (39 tests, ~0.3s, no model needed).
 
+## 0. Get the dataset
+
+```bash
+bash scripts/get_data.sh             # -> ../Shroom-Vision/{distrib,images}
+```
+
+Downloads the annotations (16 MB) and the image archive (2.4 GB) from the organizers, verifies
+both and unpacks them. Idempotent and resumable — safe to re-run after an interrupted transfer.
+Add `--no-images` for the annotations only (splits, metrics and the comparison tables need
+nothing else), `--data-dir DIR` to put the data on scratch, `--force` to re-fetch.
+
+On a cluster run it on a **login node**: compute nodes usually have no outbound network. The
+archives are kept afterwards, so re-extracting needs no network.
+
 ## 1. Freeze the dev split (image-grouped, per language)
 
 ```bash
@@ -34,11 +48,15 @@ python -m shroom.make_split          # writes splits/{lang}.json and splits/dev.
 The split hashes `image_name`, so all questions about an image stay on the same side (no leakage).
 Deterministic given `seed`/`dev_frac` in `configs/base.yaml`.
 
-## 2. Extract images (once, before any VLM run)
+## 2. Extract images (only if you already have the tarball)
+
+`scripts/get_data.sh` calls this for you; run it directly when the archive was copied in by hand:
 
 ```bash
 bash scripts/extract_images.sh       # -> ../Shroom-Vision/images/  (2.4 GB archive)
 ```
+
+It strips the archive's `shroom-vis-images/` wrapper so filenames match `image_name` in the JSONL.
 
 ## 3. Predict + evaluate
 

@@ -26,11 +26,26 @@ Gold: `y_c` = annotator prob of covering spans; `y_{c,k}` per type.
 **Postprocessing:** dev threshold sweep on `q_c` → drop below-threshold chars → argmax type
 → merge same-type neighbours → official JSONL `{"start","end","prob","label"}`.
 
-## Run (single A100)
+## Run (single H100 / A100)
 
 ```bash
-bash run_connector.sh ../Shroom-Vision google/gemma-4-12B-it
+bash scripts/connector/run_train_h100.sh --gpu 0
 ```
+
+`--gpu N` exports `CUDA_VISIBLE_DEVICES=N` and passes `--device cuda:0` down, so both stages land
+on exactly that card — masking also pins accelerate/bitsandbytes, which `--device` alone does not.
+`--gpu all` leaves the mask alone and lets accelerate shard the frozen backbone across cards.
+`--dry-run` prints the resolved plan (data dir, model, device, output dirs) and exits.
+
+The dataset is downloaded automatically via `scripts/get_data.sh` if it is missing — do that on a
+login node first if the compute nodes have no network:
+
+```bash
+bash scripts/get_data.sh --data-dir /scratch/$USER/Shroom-Vision
+```
+
+Same flags on the precision ladder (`run_quant_h100.sh --gpu 1`). The older
+`bash run_connector.sh ../Shroom-Vision google/gemma-4-12B-it` entry point still works.
 
 Runs: probe (validates token alignment) → subset cache (1200 items, quick signal) →
 grid: linear readout baseline / main connector (+ shuffled-image eval) / text-only.

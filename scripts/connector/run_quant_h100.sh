@@ -2,22 +2,46 @@
 # Precision ladder on one H100: BF16 (reference) vs INT8 vs NF4 — same subset, same
 # decoder, paired report.
 #
-#   bash scripts/connector/run_quant_h100.sh [DATA_DIR] [MODEL]
+#   bash scripts/connector/run_quant_h100.sh [--gpu N] [--data-dir DIR] [--model M]
 #
-#   DATA_DIR — folder with distrib/*.jsonl and shroom-visions-images.tar.gz
-#              (default ../Shroom-Vision)
+#   --gpu N  — pin to one card via CUDA_VISIBLE_DEVICES (default 0; 'all' = don't mask)
+#   DATA_DIR — folder with distrib/*.jsonl and the images (default ../Shroom-Vision);
+#              downloaded by scripts/get_data.sh if missing
 #   MODEL    — HF id OR a LOCAL PATH to already-downloaded Gemma 4 12B weights,
 #              e.g. /models/gemma-4-12B-it. Default google/gemma-4-12B-it (the HF id is
 #              license-gated -> needs `huggingface-cli login`; a local path does not).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-DATA_DIR="${1:-../Shroom-Vision}"
-MODEL="${2:-google/gemma-4-12B-it}"
+GPU="${GPU:-0}"
+DATA_DIR="${DATA_DIR:-../Shroom-Vision}"
+MODEL="${MODEL:-google/gemma-4-12B-it}"
+POS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --gpu) GPU="$2"; shift 2 ;;
+    --data-dir) DATA_DIR="$2"; shift 2 ;;
+    --model) MODEL="$2"; shift 2 ;;
+    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+    -*) echo "unknown option: $1 (try --help)" >&2; exit 2 ;;
+    *) POS+=("$1"); shift ;;
+  esac
+done
+[ "${#POS[@]}" -ge 1 ] && DATA_DIR="${POS[0]}"          # legacy positional form
+[ "${#POS[@]}" -ge 2 ] && MODEL="${POS[1]}"
+if [ "$GPU" = "all" ]; then
+  DEVICE=auto; TRAIN_DEV=(--device cuda)   # the decoder is tiny — it never needs sharding
+else
+  export CUDA_VISIBLE_DEVICES="$GPU"; DEVICE=cuda:0; TRAIN_DEV=(--device cuda:0)
+  echo "[gpu ] CUDA_VISIBLE_DEVICES=$GPU -> cuda:0"
+fi
 T="$DATA_DIR/distrib/shroom-vision.train.en.labeled.jsonl"
 IMG="$DATA_DIR/images"
 SUB=splits/subset_quant.jsonl
 P=splits/en.eval_protocol.json
-[ -f "$T" ] || { echo "ERROR: $T not found — put the dataset next to the repo (see data/README.md)"; exit 1; }
+if [ ! -f "$T" ] || [ ! -d "$IMG" ] || [ -z "$(ls -A "$IMG" 2>/dev/null)" ]; then
+  bash scripts/get_data.sh --data-dir "$DATA_DIR"
+fi
+[ -f "$T" ] || { echo "ERROR: $T still missing after scripts/get_data.sh"; exit 1; }
 
 # --- environment (handles both repo layouts) ---
 source .venv-cluster/bin/activate 2>/dev/null || {
@@ -28,10 +52,7 @@ source .venv-cluster/bin/activate 2>/dev/null || {
 python -c "import torch; assert torch.cuda.is_available(), 'no CUDA torch'"
 echo "[env] OK, model=$MODEL"
 
-# --- data: images + dev gold for evaluation ---
-if [ ! -d "$IMG" ] || [ -z "$(ls -A "$IMG" 2>/dev/null)" ]; then
-  bash scripts/extract_images.sh "$DATA_DIR/shroom-visions-images.tar.gz" "$IMG"
-fi
+# --- data: dev gold for evaluation ---
 mkdir -p splits
 [ -f splits/dev.en.jsonl ] || python -m shroom.make_split --distrib "$DATA_DIR/distrib" --out_dir splits
 python scripts/connector/make_subset.py --train_file "$T" --protocol "$P" --out "$SUB"
@@ -39,13 +60,14 @@ python scripts/connector/make_subset.py --train_file "$T" --protocol "$P" --out 
 # --- precision ladder ---
 for Q in bf16 int8 nf4; do
   echo "=== [$Q] probe ==="
-  python scripts/connector/extract_features.py --model_id "$MODEL" --quant $Q \
+  python scripts/connector/extract_features.py --model_id "$MODEL" --quant $Q --device "$DEVICE" \
     --train_file "$SUB" --image_dir "$IMG" --out_dir results/cache_h100_$Q --h_only --probe 2
   echo "=== [$Q] extract ==="
-  python scripts/connector/extract_features.py --model_id "$MODEL" --quant $Q \
+  python scripts/connector/extract_features.py --model_id "$MODEL" --quant $Q --device "$DEVICE" \
     --train_file "$SUB" --image_dir "$IMG" --out_dir results/cache_h100_$Q --h_only
   echo "=== [$Q] train decoder ==="
   python scripts/connector/train_connector.py --train_file "$T" --eval_ids "$P" \
+    "${TRAIN_DEV[@]}" \
     --cache_dir results/cache_h100_$Q --out_dir results/quant_h100/$Q \
     --arch linear --seed 13 --epochs 12 --batch 16 --max_train 1000
 done
