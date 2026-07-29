@@ -87,14 +87,10 @@ if { [ ! -f "$T" ] || [ ! -d "$IMG" ] || [ -z "$(ls -A "$IMG" 2>/dev/null)" ]; }
 fi
 [ -f "$T" ] || { echo "ERROR: $T still missing after scripts/get_data.sh"; exit 1; }
 
-source .venv-cluster/bin/activate 2>/dev/null || {
-  python3 -m venv .venv-cluster && source .venv-cluster/bin/activate
-  pip install -q --upgrade pip
-  REQ=requirements/cluster.txt; [ -f "$REQ" ] || REQ=requirements-cluster.txt
-  pip install -q -r "$REQ" bitsandbytes accelerate; }
+source scripts/connector/_env.sh
+setup_cluster_env
 python - <<'PY'
 import torch
-assert torch.cuda.is_available(), "no CUDA torch"
 n = torch.cuda.device_count()
 print(f"[env ] torch {torch.__version__}, {n} visible GPU(s): " + ", ".join(
     f"{i}:{torch.cuda.get_device_name(i)} "
