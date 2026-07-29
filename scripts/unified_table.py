@@ -143,6 +143,10 @@ def boot_ci(a, b, n=BOOT, seed=SEED):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--gold", required=True)
+    ap.add_argument("--eval_ids", default=None,
+                    help="json file with {'tune_dev': [...]} — filters --gold down to that "
+                         "split. Use this instead of shipping a materialised gold subset: "
+                         "--gold splits/dev.en.jsonl --eval_ids splits/en.eval_protocol.json")
     ap.add_argument("--pred", action="append", default=[], help="name=path (repeatable)")
     ap.add_argument("--note", action="append", default=[], help="name=note (repeatable)")
     ap.add_argument("--out", default=None, help="write a markdown table here")
@@ -150,6 +154,16 @@ def main():
     args = ap.parse_args()
 
     gold = {it.id: it for it in load_jsonl(args.gold)}
+    if args.eval_ids:
+        prot = json.load(open(args.eval_ids))
+        keep = set(prot.get("tune_dev") or prot.get("tune_dev200") or [])
+        if not keep:
+            raise SystemExit(f"{args.eval_ids}: no 'tune_dev' key")
+        missing = keep - set(gold)
+        if missing:
+            raise SystemExit(f"--gold {args.gold} is missing {len(missing)} of the "
+                             f"{len(keep)} eval ids (e.g. {sorted(missing)[:3]})")
+        gold = {i: it for i, it in gold.items() if i in keep}
     notes = dict(s.split("=", 1) for s in args.note)
 
     systems = [
