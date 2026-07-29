@@ -282,7 +282,7 @@ def main():
             outs = dec(Hb, Vb, t2c, inpos, vmask)
             loss = v3_loss(outs, tgt) / args.accum
             loss.backward()
-            run_loss += float(loss) * args.accum
+            run_loss += float(loss.detach()) * args.accum
             seen += 1
             if seen % args.accum == 0:
                 torch.nn.utils.clip_grad_norm_(
