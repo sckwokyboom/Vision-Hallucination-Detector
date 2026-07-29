@@ -252,7 +252,7 @@ def merge_spans(q, ptype, tau):
 @torch.no_grad()
 def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hyst", taus=None, setdec=None, segsc=None, crf=None):
     if taus is None:
-        taus = ((-1.0, -0.5, 0.0, 0.5, 1.0) if decoder == "crf" else
+        taus = ((0.05, 0.15, 0.3, 0.5, 0.7, 0.85) if decoder == "crf" else
                 (0.3, 0.5, 0.7, 0.9, 0.95) if decoder == "set" else
                 (0.2, 0.35, 0.5, 0.65, 0.8) if decoder == "seg" else
                 (0.0,) if decoder == "bio" else
@@ -280,14 +280,16 @@ def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hys
                     qcand[b] = {}
                     continue
                 by_bias = {}
-                for bias in (-1.0, -0.5, 0.0, 0.5, 1.0):
+                for bias in (-0.5, 0.0, 0.5):
                     segs4 = crf.viterbi(feats[b], n3, bias=bias)
                     by_bias[bias] = [
                         {"start": a4, "end": b5,
                          "prob": float(p[b, a4:b5].mean()) if b5 > a4 else 0.0,
                          "label": CATS[int(t[b, a4:b5].mean(0).argmax())]}
                         for a4, b5 in segs4]
-                qcand[b] = by_bias
+                import math as _math
+                qcand[b] = {"by_bias": by_bias,
+                            "p_empty": _math.exp(crf.log_p_empty(feats[b], n3))}
         if segsc is not None:
             for b in range(len(items)):
                 n3 = int(valid[b].sum())
@@ -356,7 +358,11 @@ def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hys
     floor = float(np.mean([1.0 if not per[i][0].labels else 0.0 for i in ids]))
     def decode(p, t, g, tau, g_thr, bt=None, qsp=None):
         if decoder == "crf":
-            return (qsp or {}).get(tau, [])
+            if not qsp:
+                return []
+            if qsp["p_empty"] > tau:                 # null-aware abstention
+                return []
+            return qsp["by_bias"].get(g_thr, [])
         if decoder == "seg":
             if not qsp:
                 return []
@@ -390,7 +396,9 @@ def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hys
         if decoder in ("hyst", "gate_hyst"):
             return hysteresis_spans(p, t, tau, 0.6 * tau)
         return merge_spans(p, t, tau)                     # simple threshold
-    if decoder in ("set", "seg", "crf"):
+    if decoder == "crf":
+        g_grid = (-0.5, 0.0, 0.5)                    # viterbi bias
+    elif decoder in ("set", "seg"):
         g_grid = (0.0,)
     elif decoder == "bio":
         g_grid = (0.0, 0.3, 0.5, 0.7)
@@ -512,7 +520,14 @@ def main():
     model = Connector(D, L, dim=args.dim, blocks=args.blocks, arch=args.arch,
                       use_gru=not args.no_gru).to(device)
     if args.init_from:
-        model.load_state_dict(torch.load(args.init_from, map_location=device), strict=False)
+        ck = torch.load(args.init_from, map_location=device)
+        if "model" in ck:
+            model.load_state_dict(ck["model"], strict=False)
+            if crf is not None and "crf" in ck: crf.load_state_dict(ck["crf"])
+            if setdec is not None and "setdec" in ck: setdec.load_state_dict(ck["setdec"])
+            if segsc is not None and "segsc" in ck: segsc.load_state_dict(ck["segsc"])
+        else:
+            model.load_state_dict(ck, strict=False)
         print(f"[model] loaded weights from {args.init_from}", flush=True)
     n_par = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"[model] arch={args.arch} no_image={args.no_image} trainable={n_par/1e6:.1f}M "
@@ -655,7 +670,8 @@ def main():
     with open(pred_path, "w", encoding="utf-8") as f:
         for i, (it, q, p, t, g, bt, qsp) in per.items():
             if args.decoder == "crf":
-                spans = (qsp or {}).get(m["tau"], [])
+                spans = ([] if (not qsp or qsp["p_empty"] > m["tau"])
+                         else qsp["by_bias"].get(m["g_thr"], []))
             elif args.decoder == "seg":
                 cands3 = [(a, b2, ti) for _, a, b2, ti in (qsp or [])]
                 scores3 = [c[0] for c in (qsp or [])]
@@ -684,7 +700,11 @@ def main():
                                ensure_ascii=False) + "\n")
     with open(os.path.join(args.out_dir, f"summary_{tag}.json"), "w") as f:
         json.dump(results, f, indent=2)
-    torch.save(model.state_dict(), os.path.join(args.out_dir, f"connector_{tag}.pt"))
+    state = {"model": model.state_dict()}
+    if setdec is not None: state["setdec"] = setdec.state_dict()
+    if segsc is not None: state["segsc"] = segsc.state_dict()
+    if crf is not None: state["crf"] = crf.state_dict()
+    torch.save(state, os.path.join(args.out_dir, f"connector_{tag}.pt"))
     print(json.dumps(results, indent=2))
     print(f"predictions -> {pred_path}")
 

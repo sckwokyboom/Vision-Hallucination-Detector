@@ -275,6 +275,24 @@ class SemiCRF(nn.Module):
         return nll / max(cnt, 1)
 
     @torch.no_grad()
+    def log_p_empty(self, x1, n):
+        """Exact log P(Y = all-O | X) = Score(all-O) - logZ, single example."""
+        st, en, u, o, U = self.scores(x1.unsqueeze(0))
+        st, en, o, U = st[0], en[0], o[0], U[0]
+        alphas = [torch.tensor(0.0, device=x1.device)]
+        for j in range(1, n + 1):
+            Lmax = min(j, self.max_len)
+            Ls = torch.arange(1, Lmax + 1, device=x1.device)
+            a_idx = j - Ls
+            seg = (st[a_idx] + en[j - 1] + (U[j] - U[a_idx]) / Ls.float()
+                   + self.wlen[torch.clamp((torch.log2(Ls.float()) * 3).long(), max=23)])
+            hist = torch.stack([alphas[int(a)] for a in a_idx])
+            cand = torch.cat([(alphas[j - 1] + o[j - 1]).unsqueeze(0), hist + seg])
+            alphas.append(torch.logsumexp(cand, 0))
+        score_empty = o[:n].sum()
+        return float(score_empty - alphas[n])
+
+    @torch.no_grad()
     def viterbi(self, x1, n, bias=0.0):
         """Exact best segmentation for ONE example. x1 [C,dim]; returns [(a,b), ...]."""
         st, en, u, o, U = self.scores(x1.unsqueeze(0))
