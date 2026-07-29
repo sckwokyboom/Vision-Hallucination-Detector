@@ -1,5 +1,9 @@
 # Full experimental summary (all phases)
 
+> **For a head-to-head table, read [COMPARISON.md](COMPARISON.md) instead.** It re-scores the
+> SHROOM starter baseline and every trained system on ONE eval set (tune_dev-202) with ONE scorer,
+> with paired bootstrap CIs against the floor. This file is the phase-by-phase history.
+
 Three eval samples (NOT directly comparable): en-dev-200 (representative, floor 0.210),
 strat-100 (stratified diagnostic, floor 0.210), conn-dev-31 (connector smoke, floor 0.323).
 
