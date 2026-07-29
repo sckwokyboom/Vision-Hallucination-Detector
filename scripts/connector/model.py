@@ -56,6 +56,11 @@ class Connector(nn.Module):
             self.blocks = nn.ModuleList(CrossBlock(dim, heads, dropout) for _ in range(blocks))
             self.fuse = nn.Sequential(nn.Linear(dim * 4, dim), nn.GELU(),
                                       nn.Dropout(dropout), nn.LayerNorm(dim))
+            # ReZero on the visual branch: at init the model IS the H-only readout, and
+            # the fusion only enters as alpha moves off zero — so a connector run can
+            # never be worse than linear merely because random fusion weights perturb a
+            # signal the H-path already carries.
+            self.alpha = nn.Parameter(torch.zeros(1))
         # char refiner: CNN + BiGRU (sequence context for contiguous spans)
         self.char_pos = nn.Embedding(64, 32)                   # position inside token (capped)
         self.refine = nn.Sequential(
@@ -78,7 +83,7 @@ class Connector(nn.Module):
             c = h
             for blk in self.blocks:
                 c = blk(c, v, v_mask)
-            z = self.fuse(torch.cat([h, c, h - c, h * c], dim=-1))
+            z = h + self.alpha * self.fuse(torch.cat([h, c, h - c, h * c], dim=-1))
         else:                                                   # "linear" readout baseline
             z = h
         # scatter token features to chars
@@ -326,7 +331,8 @@ def tversky_loss(q_logit, m, valid, alpha=0.7, beta=0.3):
     tp = (q * m).sum(1)
     fp = (q * (1 - m) * valid).sum(1)
     fn = ((1 - q) * m).sum(1)
-    return (1 - tp / (tp + alpha * fp + beta * fn + 1e-6)).mean()
+    # +1 smoothing keeps a real FP gradient on CLEAN examples (where tp=fn=0)
+    return (1 - (tp + 1.0) / (tp + 1.0 + alpha * fp + beta * fn + 1e-6)).mean()
 
 
 def soft_jaccard_loss(q_logit, m, valid):
