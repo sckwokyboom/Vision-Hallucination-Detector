@@ -24,6 +24,19 @@ def char_iou(gold_spans, pred_spans, resp_len):
     return len(g & p) / len(g | p)
 
 
+def gold_char_probs_sum(spans, resp_len):
+    """OFFICIAL aggregation: the organizers' scorer SUMS probs of overlapping gold spans
+    (ref_vec[idx] += span['prob']). Use this as the training target."""
+    probs = [0.0] * resp_len
+    for sp in spans:
+        a = max(0, min(int(sp["start"]), resp_len))
+        b = max(0, min(int(sp["end"]), resp_len))
+        pr = float(sp.get("prob", 1.0))
+        for i in range(a, b):
+            probs[i] += pr
+    return probs
+
+
 def gold_char_probs(spans, resp_len):
     probs = [0.0] * resp_len
     for sp in spans:
