@@ -36,6 +36,53 @@ from model import (Connector, SetDecoder, set_decode, SegmentScorer, dp_select, 
 
 
 # --------------------------------------------------------------------------- data
+def build_example(it, V, H, tc, answer_len, max_chars=4000, max_vis=1200):
+    """Supervision for one item from its backbone features and token->char map.
+
+    This is THE definition of the training target — official SUM aggregation of
+    annotator spans, char->token scatter map, BIO tags, contiguous gold segments —
+    shared by the cached-feature trainer (CacheDS) and the live-backbone LoRA
+    trainer, so the two can never drift apart on gold semantics.
+    """
+    n_ch = min(int(answer_len), max_chars)
+    # char-level gold
+    cp = gold_char_probs_sum(it.labels, int(answer_len))   # official aggregation
+    y = np.zeros(n_ch, dtype=np.float32)
+    y[:n_ch] = np.clip(cp[:n_ch], 0, 1)
+    ytype = np.zeros((n_ch, len(CATS)), dtype=np.float32)
+    for sp in it.labels:
+        k = CATS.index(sp.get("label", "other")) if sp.get("label") in CATS else 4
+        a, b = max(0, sp["start"]), min(n_ch, sp["end"])
+        ytype[a:b, k] = np.maximum(ytype[a:b, k], float(sp.get("prob", 1.0)))
+    # char -> token map + in-token position
+    t2c = np.full(n_ch, -1, dtype=np.int64)
+    inpos = np.zeros(n_ch, dtype=np.int64)
+    for t, (s, e) in enumerate(tc):
+        s, e = int(s), min(int(e), n_ch)
+        if s >= n_ch:
+            break
+        t2c[s:e] = t
+        inpos[s:e] = np.arange(e - s)
+    m = (y > 0).astype(np.int64)
+    segs = []
+    k = 0
+    while k < n_ch:
+        if m[k]:
+            a = k
+            while k < n_ch and m[k]:
+                k += 1
+            tmean = ytype[a:k].mean(0)
+            segs.append((a, k, int(tmean.argmax()), float(y[a:k].max())))
+        else:
+            k += 1
+    bio = np.zeros(n_ch, dtype=np.int64)                 # 0=O
+    for k in range(n_ch):
+        if m[k]:
+            bio[k] = 1 if (k == 0 or not m[k - 1]) else 2  # B / I
+    return dict(V=V[:max_vis], H=H, t2c=t2c, inpos=inpos, y=y, ytype=ytype,
+                bio=bio, segs=segs, gate=float(bool(it.labels)), item=it)
+
+
 class CacheDS(Dataset):
     def __init__(self, items, cache_dir, max_chars=1200, max_vis=1200, shuffle_v=False):
         self.items = [it for it in items
@@ -73,43 +120,8 @@ class CacheDS(Dataset):
                 V = np.load(os.path.join(self.dir, f"{other.id}.npz"))["V"]
             except Exception:
                 pass                                   # keep own V rather than crash
-        n_ch = min(int(z["answer_len"]), self.max_chars)
-        # char-level gold
-        cp = gold_char_probs_sum(it.labels, int(z["answer_len"]))   # official aggregation
-        y = np.zeros(n_ch, dtype=np.float32)
-        y[:n_ch] = np.clip(cp[:n_ch], 0, 1)
-        ytype = np.zeros((n_ch, len(CATS)), dtype=np.float32)
-        for sp in it.labels:
-            k = CATS.index(sp.get("label", "other")) if sp.get("label") in CATS else 4
-            a, b = max(0, sp["start"]), min(n_ch, sp["end"])
-            ytype[a:b, k] = np.maximum(ytype[a:b, k], float(sp.get("prob", 1.0)))
-        # char -> token map + in-token position
-        t2c = np.full(n_ch, -1, dtype=np.int64)
-        inpos = np.zeros(n_ch, dtype=np.int64)
-        for t, (s, e) in enumerate(tc):
-            s, e = int(s), min(int(e), n_ch)
-            if s >= n_ch:
-                break
-            t2c[s:e] = t
-            inpos[s:e] = np.arange(e - s)
-        m = (y > 0).astype(np.int64)
-        segs = []
-        k = 0
-        while k < n_ch:
-            if m[k]:
-                a = k
-                while k < n_ch and m[k]:
-                    k += 1
-                tmean = ytype[a:k].mean(0)
-                segs.append((a, k, int(tmean.argmax()), float(y[a:k].max())))
-            else:
-                k += 1
-        bio = np.zeros(n_ch, dtype=np.int64)                 # 0=O
-        for k in range(n_ch):
-            if m[k]:
-                bio[k] = 1 if (k == 0 or not m[k - 1]) else 2  # B / I
-        return dict(V=V[: self.max_vis], H=H, t2c=t2c, inpos=inpos, y=y, ytype=ytype,
-                    bio=bio, segs=segs, gate=float(bool(it.labels)), item=it)
+        return build_example(it, V, H, tc, int(z["answer_len"]),
+                             self.max_chars, self.max_vis)
 
 
 def collate(batch):
