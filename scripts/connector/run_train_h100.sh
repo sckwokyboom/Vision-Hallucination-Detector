@@ -28,6 +28,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 GPU="${GPU:-0}"
+DD_SET=0; M_SET=0
 DATA_DIR="${DATA_DIR:-../Shroom-Vision}"
 MODEL="${MODEL:-google/gemma-4-12B-it}"
 DRY=0
@@ -35,16 +36,22 @@ POS=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --gpu) GPU="$2"; shift 2 ;;
-    --data-dir) DATA_DIR="$2"; shift 2 ;;
-    --model) MODEL="$2"; shift 2 ;;
+    --data-dir) DATA_DIR="$2"; DD_SET=1; shift 2 ;;
+    --model) MODEL="$2"; M_SET=1; shift 2 ;;
     --dry-run) DRY=1; shift ;;
     -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
     -*) echo "unknown option: $1 (try --help)" >&2; exit 2 ;;
     *) POS+=("$1"); shift ;;
   esac
 done
-[ "${#POS[@]}" -ge 1 ] && DATA_DIR="${POS[0]}"          # legacy positional form
-[ "${#POS[@]}" -ge 2 ] && MODEL="${POS[1]}"
+# legacy positional form — never overrides an explicit flag. A lone positional
+# that looks like a model path (no distrib/ inside) is treated as --model.
+if [ "${#POS[@]}" -ge 1 ]; then
+  if [ "$DD_SET" -eq 0 ] && [ -d "${POS[0]}/distrib" ]; then DATA_DIR="${POS[0]}"
+  elif [ "$M_SET" -eq 0 ]; then MODEL="${POS[0]}"
+  else echo "warn: ignoring positional '${POS[0]}' (flags already set)" >&2; fi
+fi
+[ "${#POS[@]}" -ge 2 ] && [ "$M_SET" -eq 0 ] && MODEL="${POS[1]}"
 
 # --- GPU selection -----------------------------------------------------------------
 # Masking with CUDA_VISIBLE_DEVICES (rather than only passing --device) also pins
@@ -71,7 +78,11 @@ if [ "$DRY" -eq 1 ]; then
 fi
 
 echo "=== stage 0: dataset ==="
-if [ ! -f "$T" ] || [ ! -d "$IMG" ] || [ -z "$(ls -A "$IMG" 2>/dev/null)" ]; then
+if [ ! -f "$T" ] && [ "$DD_SET" -eq 1 ]; then
+  echo "ERROR: --data-dir '$DATA_DIR' has no distrib/shroom-vision.train.en.labeled.jsonl" >&2
+  echo "       (not downloading: --data-dir was given explicitly)" >&2; exit 1
+fi
+if { [ ! -f "$T" ] || [ ! -d "$IMG" ] || [ -z "$(ls -A "$IMG" 2>/dev/null)" ]; } && [ "$DD_SET" -eq 0 ]; then
   bash scripts/get_data.sh --data-dir "$DATA_DIR"
 fi
 [ -f "$T" ] || { echo "ERROR: $T still missing after scripts/get_data.sh"; exit 1; }
