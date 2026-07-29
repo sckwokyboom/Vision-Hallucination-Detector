@@ -45,18 +45,18 @@ T="$DATA_DIR/distrib/shroom-vision.train.en.labeled.jsonl"
 IMG="$DATA_DIR/images"
 SUB=splits/subset_quant.jsonl
 P=splits/en.eval_protocol.json
+if [ ! -f "$T" ] && [ "$DD_SET" -eq 1 ]; then
+  echo "ERROR: --data-dir '$DATA_DIR' has no distrib/shroom-vision.train.en.labeled.jsonl" >&2
+  echo "       (not downloading: --data-dir was given explicitly)" >&2; exit 1
+fi
 if { [ ! -f "$T" ] || [ ! -d "$IMG" ] || [ -z "$(ls -A "$IMG" 2>/dev/null)" ]; } && [ "$DD_SET" -eq 0 ]; then
   bash scripts/get_data.sh --data-dir "$DATA_DIR"
 fi
 [ -f "$T" ] || { echo "ERROR: $T still missing after scripts/get_data.sh"; exit 1; }
 
-# --- environment (handles both repo layouts) ---
-source .venv-cluster/bin/activate 2>/dev/null || {
-  python3 -m venv .venv-cluster && source .venv-cluster/bin/activate
-  pip install -q --upgrade pip
-  REQ=requirements/cluster.txt; [ -f "$REQ" ] || REQ=requirements-cluster.txt
-  pip install -q -r "$REQ" bitsandbytes accelerate; }
-python -c "import torch; assert torch.cuda.is_available(), 'no CUDA torch'"
+# --- environment (venv + every import the extractor needs) ---
+source scripts/connector/_env.sh
+setup_cluster_env
 echo "[env] OK, model=$MODEL"
 
 # --- data: dev gold for evaluation ---

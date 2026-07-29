@@ -1,6 +1,10 @@
 # Fine-tune pilot on a CUDA cluster (A100).
-# torch: install the wheel matching your CUDA; plain `pip install torch` works on most setups.
+# torch/torchvision: install the wheels matching your CUDA, from one index and in one command
+# (`pip install torch torchvision --index-url https://download.pytorch.org/whl/cuXXX`); plain
+# `pip install torch torchvision` works on most setups. torchvision is NOT optional — Gemma-4's
+# image processor imports torchvision.transforms.v2 at module-import time.
 torch>=2.3
+torchvision>=0.18
 transformers>=4.49
 sentencepiece
 protobuf
