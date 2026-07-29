@@ -26,16 +26,22 @@ class LoRALinear(nn.Module):
         self.base = base
         self.scale = alpha / r
         self.drop = nn.Dropout(dropout)
-        dt = base.weight.dtype
-        self.A = nn.Parameter(torch.empty(r, base.in_features, dtype=dt))
-        self.B = nn.Parameter(torch.zeros(base.out_features, r, dtype=dt))
+        # On the base's device (a CPU-born adapter next to a cuda base was the first
+        # smoke-test crash), and in fp32 regardless of the base dtype: AdamW moments in
+        # bf16 quantize away ~3 mantissa bits, and at r=16 fp32 costs nothing.
+        dev = base.weight.device
+        self.A = nn.Parameter(torch.empty(r, base.in_features,
+                                          dtype=torch.float32, device=dev))
+        self.B = nn.Parameter(torch.zeros(base.out_features, r,
+                                          dtype=torch.float32, device=dev))
         nn.init.kaiming_uniform_(self.A, a=5 ** 0.5)
         base.weight.requires_grad_(False)
         if base.bias is not None:
             base.bias.requires_grad_(False)
 
     def forward(self, x):
-        return self.base(x) + self.drop(x) @ self.A.t() @ self.B.t() * self.scale
+        lo = self.drop(x).to(self.A.dtype) @ self.A.t() @ self.B.t() * self.scale
+        return self.base(x) + lo.to(x.dtype)
 
 
 def inject_lora(model, from_layer=24, to_layer=10 ** 9, r=16, alpha=32, dropout=0.05):

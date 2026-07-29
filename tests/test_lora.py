@@ -66,6 +66,22 @@ def test_wrapped_equals_base_at_init():
     assert torch.allclose(wrapped(x), base(x), atol=1e-7), "B=0 must mean no change"
 
 
+def test_bf16_base_gets_fp32_adapters_on_base_device():
+    """The smoke-test crash: adapters born on CPU next to a cuda base. Device must
+    follow the base; dtype must be fp32 with cast-in/cast-out around the matmul."""
+    base = nn.Linear(8, 8).to(torch.bfloat16)
+    w = LoRALinear(base, r=4, dropout=0.0).eval()
+    assert w.A.device == base.weight.device and w.B.device == base.weight.device
+    assert w.A.dtype == torch.float32
+    x = torch.randn(2, 8, dtype=torch.bfloat16)
+    y = w(x)
+    assert y.dtype == torch.bfloat16 and torch.isfinite(y.float()).all()
+    with torch.no_grad():
+        w.B.add_(torch.randn_like(w.B))
+    assert not torch.allclose(w(x).float(), base(x).float()), \
+        "after B moves, the adapter must actually contribute"
+
+
 def test_gradients_reach_A_and_B_and_base_stays_frozen():
     m = Toy(n_layers=2)
     inject_lora(m, from_layer=1, dropout=0.0)
