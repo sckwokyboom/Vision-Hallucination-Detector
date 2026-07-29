@@ -723,10 +723,12 @@ def main():
             if setdec is not None: st_b["setdec"] = setdec.state_dict()
             if segsc is not None: st_b["segsc"] = segsc.state_dict()
             torch.save(st_b, os.path.join(args.out_dir, f"best_iou_{tag}.pt"))
+        alpha_s = (f" alpha={float(model.alpha):+.5f}"
+                   if args.arch == "connector" else "")
         print(f"[ep {ep}] loss={tot/nb:.4f} dev: iou={m['span_iou']:.4f} (fl={m['floor']:.3f}, "
               f"tau={m['tau']}, g={m['g_thr']}) dirty={m['dirty_iou']:.3f} cleanOK={m['clean_empty']:.2f} "
-              f"gateRec={m['dirty_gate_recall']:.2f} corR={m['cor_raw']:.3f} corS={m['cor_submission']:.3f} "
-              f"[{(time.time()-t0)/60:.1f}m]", flush=True)
+              f"gateRec={m['dirty_gate_recall']:.2f} corR={m['cor_raw']:.3f} corS={m['cor_submission']:.3f}"
+              f"{alpha_s} [{(time.time()-t0)/60:.1f}m]", flush=True)
 
     per, m = run_eval(model, dv_dl, device, no_image=args.no_image, decoder=args.decoder, setdec=setdec, segsc=segsc, crf=crf)
     results = {"variant": tag, "metrics": m}
