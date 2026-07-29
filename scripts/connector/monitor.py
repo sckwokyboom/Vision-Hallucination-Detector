@@ -116,7 +116,7 @@ def show_log(path):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--logs", nargs="*",
-                    default=["/tmp/set_mac.log", "/tmp/seg_mac.log", "/tmp/v3_mac.log"])
+                    default=["/tmp/crf_mac.log", "/tmp/seg_mac.log", "/tmp/v3_mac.log"])
     ap.add_argument("--watch", type=int, default=0, help="refresh period, seconds")
     args = ap.parse_args()
     while True:

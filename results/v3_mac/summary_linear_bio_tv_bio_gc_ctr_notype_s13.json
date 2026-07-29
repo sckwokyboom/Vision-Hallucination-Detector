@@ -1,0 +1,20 @@
+{
+  "variant": "linear_bio_tv_bio_gc_ctr_notype_s13",
+  "metrics": {
+    "span_iou": 0.32198960798418996,
+    "tau": 0.0,
+    "g_thr": 0.7,
+    "floor": 0.21287128712871287,
+    "dirty_iou": 0.16378553970318474,
+    "clean_empty": 0.9069767441860465,
+    "dirty_gate_recall": 1.0,
+    "iou_gate_open": 0.16378553970318474,
+    "avg_spans": 4.1683168316831685,
+    "roc_auc": 0.7504968513587901,
+    "pr_auc": 0.3699273382852519,
+    "cor_raw": 0.38939871441115614,
+    "cor_spearman": 0.3207512197304579,
+    "cor_submission": 0.38939871441115614,
+    "cor_lbl": 0.011674570413028731
+  }
+}
