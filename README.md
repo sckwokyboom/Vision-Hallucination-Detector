@@ -52,6 +52,12 @@ answers are clean and empty-vs-empty scores 1.0. Progression of systems (full su
 | claim-level verification | 0.249 | 0.576 | 0.163 |
 | **HYBRID (claim clean-gate + extraction spans)** | **0.273** | 0.600 | 0.164 |
 
+Those zero-shot rows come from an earlier 200-item sample. For a like-for-like table —
+every system, including the trained decoders, re-scored on **one** eval set with **one**
+scorer and bootstrap CIs against the floor — see [docs/comparison.md](docs/comparison.md).
+On the frozen tune-202 split the starter baseline lands at 0.2005 span_iou (below the 0.2129
+floor, roc_auc 0.495) while the trained decoders reach 0.320.
+
 And a controlled study of a **binary hallucination gate** (Gemma-4-12B, multimodal
 few-shot), scored threshold-free via `logP(YES) − logP(NO)`:
 

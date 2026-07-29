@@ -41,6 +41,9 @@ def main():
                     help="Store the N raw model outputs per item (for offline tau/align sweeps).")
     ap.add_argument("--prompt_style", choices=["skeptical", "original"], default="skeptical",
                     help="'original' = the starter label_with_gemma.py prompt (3 categories).")
+    ap.add_argument("--eval_ids", default=None,
+                    help="json file with {'tune_dev': [...]} — restrict --input to that split, "
+                         "so no materialised gold subset has to exist on disk.")
     args = ap.parse_args()
 
     prompt_fn = build_prompt_original if args.prompt_style == "original" else build_prompt
@@ -64,6 +67,11 @@ def main():
     config = load_config(args.model_id)
 
     items = load_jsonl(args.input)
+    if args.eval_ids:
+        prot = json.load(open(args.eval_ids))
+        keep = set(prot.get("tune_dev") or prot.get("tune_dev200") or [])
+        items = [it for it in items if it.id in keep]
+        print(f"[eval_ids] {len(items)}/{len(keep)} items from {args.eval_ids}", flush=True)
     if args.max_samples:
         items = items[:args.max_samples]
 
