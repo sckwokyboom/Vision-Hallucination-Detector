@@ -141,6 +141,14 @@ threshold gap is not reachable by post-hoc decoding; fields must get sharper via
 | v1 gate_hyst (per-char threshold) | 0.304 | 0.223 | 0.60 | 0.390 | baseline |
 | v3 BIO + contrastive + consistency + Tversky | **0.320** | 0.164 | **0.91** | 0.389 | best so far (+0.016 paired, ns) |
 | DETR set-of-spans (12 queries, Hungarian) | 0.213 (floor) | 0.000 | 1.00 | 0.34@ep7 | **NEGATIVE: conf head collapsed to all-null in 7 epochs; loss not converging (DETR-style slow convergence + conf class imbalance + CE-over-1200-positions loss scale). Aborted; would need denoising-queries/aux-loss tricks + far more epochs.** |
-| segment-scorer + DP (semi-CRF approx.) | running | | | | |
+| segment-scorer + DP (ranker, sampled negatives) | 0.279 | 0.203 | 0.56 | 0.419 | no IoU gain; best-ish Cor |
+| TRUE semi-Markov CRF (global partition fn, Viterbi) | 0.266 | 0.212 | 0.47 | **0.426** | no IoU gain; **best fields: AUC 0.796, PR 0.515, corR 0.426** |
+
+FINAL VERDICT (decode-head sweep COMPLETE — 6 families tested): all heads live in the
+0.27-0.32 corridor on identical probability fields (AUC 0.78-0.80, oracle-mspan ~0.71).
+v3-BIO wins span_iou (0.320) via clean protection; CRF/seg training slightly sharpens
+the FIELDS (best corR/AUC/PR) without converting to IoU. The remaining oracle gap is a
+FIELD/supervision problem, honestly established. Next levers: full-precision + v3 grid
+on H100, multilingual x4 data, reranker-hybrid with the zero-shot locator.
 
 v2 peak-decoder swap on frozen weights was also null earlier (0.3045 vs 0.3062).
