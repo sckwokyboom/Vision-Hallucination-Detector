@@ -148,7 +148,7 @@ On that reading, the trained readouts (+0.107 / +0.091) are ~1.5× the best zero
 Baseline (≈3 min on an M-series Mac, 0.8 s/item):
 
 ```bash
-.venv/bin/python scripts/mlx_predict.py --model_id mlx-community/Qwen2-VL-2B-Instruct-4bit --input splits/tune202.en.jsonl --image_dir ../Shroom-Vision/images --output results/baseline/starter_qwen2vl2b_t05.jsonl --prompt_style original --temperature 0.5 --max_tokens 1024 --max_side 512 --save_raw
+.venv/bin/python scripts/mlx_predict.py --model_id mlx-community/Qwen2-VL-2B-Instruct-4bit --input splits/dev.en.jsonl --eval_ids splits/en.eval_protocol.json --image_dir ../Shroom-Vision/images --output results/baseline/starter_qwen2vl2b_t05.jsonl --prompt_style original --temperature 0.5 --max_tokens 1024 --max_side 512 --save_raw
 ```
 
 Starter-faithful alignment, then the table:
