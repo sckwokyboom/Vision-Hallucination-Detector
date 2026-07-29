@@ -37,11 +37,25 @@ from model import (Connector, SetDecoder, set_decode, SegmentScorer, dp_select, 
 
 # --------------------------------------------------------------------------- data
 class CacheDS(Dataset):
-    def __init__(self, items, cache_dir, max_chars=1200, max_vis=1200):
+    def __init__(self, items, cache_dir, max_chars=1200, max_vis=1200, shuffle_v=False):
         self.items = [it for it in items
                       if os.path.exists(os.path.join(cache_dir, f"{it.id}.npz"))]
         self.dir = cache_dir
         self.max_chars, self.max_vis = max_chars, max_vis
+        # shuffle_v: train-time grounding control. Every item gets the V of a DIFFERENT
+        # image (deterministic derangement), so a connector trained this way has the same
+        # capacity as the real one but no usable visual information. Distinct from
+        # --eval_shuffle, which deranges at inference on a normally-trained model.
+        self.vmap = None
+        if shuffle_v:
+            n = len(self.items)
+            rng = np.random.default_rng(0)
+            perm = rng.permutation(n)
+            for i in range(n):     # no fixed points on the same image
+                if self.items[perm[i]].image_name == self.items[i].image_name:
+                    j = (i + 1) % n
+                    perm[i], perm[j] = perm[j], perm[i]
+            self.vmap = perm
 
     def __len__(self):
         return len(self.items)
@@ -53,6 +67,12 @@ class CacheDS(Dataset):
         except Exception:              # partial/corrupt cache file -> fall back to a neighbour
             return self.__getitem__((i + 1) % len(self.items))
         V, H, tc = z["V"], z["H"], z["tok_char"]
+        if self.vmap is not None:
+            other = self.items[self.vmap[i]]
+            try:
+                V = np.load(os.path.join(self.dir, f"{other.id}.npz"))["V"]
+            except Exception:
+                pass                                   # keep own V rather than crash
         n_ch = min(int(z["answer_len"]), self.max_chars)
         # char-level gold
         cp = gold_char_probs_sum(it.labels, int(z["answer_len"]))   # official aggregation
@@ -458,6 +478,9 @@ def main():
     ap.add_argument("--arch", choices=["connector", "linear"], default="connector")
     ap.add_argument("--no_image", action="store_true")
     ap.add_argument("--eval_shuffle", action="store_true")
+    ap.add_argument("--shuffle_v", action="store_true",
+                    help="train-time control: every item gets the V of a different image "
+                         "(same capacity, no visual signal); connector arch only")
     ap.add_argument("--dim", type=int, default=768)
     ap.add_argument("--blocks", type=int, default=3)
     ap.add_argument("--epochs", type=int, default=4)
@@ -518,8 +541,8 @@ def main():
     dv = [it for it in items if it.id in set(dv_ids)]
     if args.max_train:
         tr = tr[:args.max_train]
-    tr_ds = CacheDS(tr, args.cache_dir, max_chars=args.max_chars)
-    dv_ds = CacheDS(dv, args.cache_dir, max_chars=args.max_chars)
+    tr_ds = CacheDS(tr, args.cache_dir, max_chars=args.max_chars, shuffle_v=args.shuffle_v)
+    dv_ds = CacheDS(dv, args.cache_dir, max_chars=args.max_chars, shuffle_v=args.shuffle_v)
     manifest = {"train_ids": [it.id for it in tr_ds.items], "dev_ids": [it.id for it in dv_ds.items],
                 "seed": args.seed, "decoder": args.decoder, "gru": not args.no_gru}
     os.makedirs(args.out_dir, exist_ok=True)
@@ -536,8 +559,16 @@ def main():
 
     z0 = tr_ds[0]
     D, L = z0["H"].shape[2], z0["H"].shape[1]
+    if args.arch == "connector" and z0["V"].shape[0] == 0:
+        raise SystemExit(
+            f"ERROR: --arch connector needs visual states, but the cache in {args.cache_dir} "
+            "was extracted with --h_only (V is empty). Re-extract without --h_only.")
     model = Connector(D, L, dim=args.dim, blocks=args.blocks, arch=args.arch,
                       use_gru=not args.no_gru).to(device)
+    # aux heads must exist BEFORE --init_from so a resumed checkpoint can restore them
+    setdec = SetDecoder(args.dim, K=args.set_k).to(device) if args.head == "set" else None
+    segsc = SegmentScorer(args.dim).to(device) if args.head == "seg" else None
+    crf = SemiCRF(args.dim).to(device) if args.head == "crf" else None
     if args.init_from:
         ck = torch.load(args.init_from, map_location=device)
         if "model" in ck:
@@ -551,15 +582,12 @@ def main():
     n_par = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"[model] arch={args.arch} no_image={args.no_image} trainable={n_par/1e6:.1f}M "
           f"(backbone frozen, cached)", flush=True)
-    setdec = SetDecoder(args.dim, K=args.set_k).to(device) if args.head == "set" else None
-    segsc = SegmentScorer(args.dim).to(device) if args.head == "seg" else None
-    crf = SemiCRF(args.dim).to(device) if args.head == "crf" else None
     params = (list(model.parameters()) + (list(setdec.parameters()) if setdec else [])
               + (list(segsc.parameters()) if segsc else []) + (list(crf.parameters()) if crf else []))
     opt = torch.optim.AdamW(params, lr=args.lr)
     bce = nn.BCEWithLogitsLoss(reduction="none")
 
-    tag = f"{args.arch}{'_noimg' if args.no_image else ''}_{args.decoder}{'_tv' if args.tversky else ''}{'_bio' if args.bio else ''}{'_gc' if args.gate_consistency else ''}{'_ctr' if args.contrastive else ''}{'_set' if args.head=='set' else ''}{'_seg' if args.head=='seg' else ''}{'_crf' if args.head=='crf' else ''}{'_notype' if args.no_type_loss else ''}{'_nogru' if args.no_gru else ''}_s{args.seed}"
+    tag = f"{args.arch}{'_noimg' if args.no_image else ''}{'_shufv' if args.shuffle_v else ''}_{args.decoder}{'_tv' if args.tversky else ''}{'_bio' if args.bio else ''}{'_gc' if args.gate_consistency else ''}{'_ctr' if args.contrastive else ''}{'_set' if args.head=='set' else ''}{'_seg' if args.head=='seg' else ''}{'_crf' if args.head=='crf' else ''}{'_notype' if args.no_type_loss else ''}{'_nogru' if args.no_gru else ''}_s{args.seed}"
     t0 = time.time()
     best_iou_seen = (-1.0, 0)
     for ep in range(1, 0 if args.eval_only else args.epochs + 1):
