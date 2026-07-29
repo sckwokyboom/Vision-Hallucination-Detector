@@ -129,6 +129,13 @@ def main():
     print(f"[load] {args.model_id} quant={args.quant} device={args.device}", flush=True)
     processor = AutoProcessor.from_pretrained(args.model_id, trust_remote_code=True)
     tok = processor.tokenizer
+    # encode_review needs offset mapping, which only a fast tokenizer provides. Check now,
+    # before the 24 GB weight load, rather than crashing on the first item.
+    if not getattr(tok, "is_fast", False):
+        raise SystemExit(
+            f"ERROR: {args.model_id} loaded a slow tokenizer ({type(tok).__name__}); "
+            "character offsets require a fast one. Install `tokenizers`, or make sure the "
+            "model directory ships tokenizer.json.")
     model = load_model(args.model_id, args.quant, args.device)
 
     img_tok = None
