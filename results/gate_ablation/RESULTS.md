@@ -152,3 +152,33 @@ FIELD/supervision problem, honestly established. Next levers: full-precision + v
 on H100, multilingual x4 data, reranker-hybrid with the zero-shot locator.
 
 v2 peak-decoder swap on frozen weights was also null earlier (0.3045 vs 0.3062).
+
+## 9. OFFICIAL SCORER (participant kit) — everything above re-scored
+
+The kit exists: https://a3s.fi/mickusti-2007780-pub/participant_kit.shroom_visions.zip
+Vendored at scripts/official/. It differs from my internal metrics in ways that matter:
+ - Cor = per-item **Spearman**, then averaged (NOT pooled Pearson). Constant vectors get a
+   binarized 0/1 fallback -> **predict-nothing scores Cor 0.2129, not 0**.
+ - gold soft labels **SUM** over overlapping spans (`ref_vec[idx] += prob`); my target used max.
+ - submission field is **`labels`** (not `pred_labels`); `char_probs` is never read — the
+   per-char probability must live in each span's `prob`.
+
+Official results on tune-202 (image-cluster bootstrap):
+
+| system | IoU | Cor | Cor_lbl |
+|---|---|---|---|
+| predict-nothing | 0.2129 | 0.2129 | 0.2129 |
+| predict-everything | 0.1688 | 0.0050 | 0.0050 |
+| v1 gate_hyst | 0.3041 | 0.2655 | 0.1968 |
+| **v3-BIO** | **0.3202** | 0.3141 | 0.2085 |
+| seg-ranker | 0.2788 | 0.3063 | 0.2144 |
+| CRF null-aware | 0.2897 | **0.3220** | 0.1722 |
+
+vs predict-nothing (paired): v3-BIO IoU **+0.107 [+0.061,+0.158] SIGNIFICANT**,
+Cor **+0.101 [+0.050,+0.152] SIGNIFICANT**. CRF: IoU +0.077 sig, Cor +0.109 sig.
+
+**Corrections this forces:** my previously reported "corR 0.39-0.43" was an internal pooled
+Pearson, NOT the competition Cor; the real Cor is 0.27-0.32 against a 0.213 floor. The
+"spans from BIO + probs from CRF p-head" submission plan is NOT expressible — the scorer reads
+probabilities only from the emitted spans. And **Cor_lbl of every trained system is at or below
+the floor** (0.17-0.21 vs 0.2129) because `--no_type_loss` leaves the type head untrained.

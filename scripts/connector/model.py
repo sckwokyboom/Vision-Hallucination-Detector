@@ -326,7 +326,8 @@ def tversky_loss(q_logit, m, valid, alpha=0.7, beta=0.3):
     tp = (q * m).sum(1)
     fp = (q * (1 - m) * valid).sum(1)
     fn = ((1 - q) * m).sum(1)
-    return (1 - tp / (tp + alpha * fp + beta * fn + 1e-6)).mean()
+    # +1 smoothing keeps a real FP gradient on CLEAN examples (where tp=fn=0)
+    return (1 - (tp + 1.0) / (tp + 1.0 + alpha * fp + beta * fn + 1e-6)).mean()
 
 
 def soft_jaccard_loss(q_logit, m, valid):
