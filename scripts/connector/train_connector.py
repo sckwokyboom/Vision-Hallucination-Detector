@@ -283,7 +283,7 @@ def merge_spans(q, ptype, tau):
 
 
 @torch.no_grad()
-def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hyst", taus=None, setdec=None, segsc=None, crf=None):
+def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hyst", taus=None, setdec=None, segsc=None, crf=None, gate_model=None):
     if taus is None:
         taus = ((0.05, 0.15, 0.3, 0.5, 0.7, 0.85) if decoder == "crf" else
                 (0.3, 0.5, 0.7, 0.9, 0.95) if decoder == "set" else
@@ -300,10 +300,15 @@ def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hys
         if shuffle:                                   # derange within batch
             V = torch.roll(V, 1, dims=0); vmask = torch.roll(vmask, 1, dims=0)
         t2c_d = t2c.to(device)
-        ql, pl, tl, gl, bl, feats = model(H.to(device), V.to(device), t2c_d,
-                                          inpos.to(device), vmask.to(device))
+        Hd, Vd, vmd, ipd = H.to(device), V.to(device), vmask.to(device), inpos.to(device)
+        ql, pl, tl, gl, bl, feats = model(Hd, Vd, t2c_d, ipd, vmd)
         q = torch.sigmoid(ql).cpu().numpy(); p = torch.sigmoid(pl).cpu().numpy()
         t = torch.sigmoid(tl).cpu().numpy(); g = torch.sigmoid(gl).cpu().numpy()
+        if gate_model is not None:
+            # V4 cascade: the clean/dirty decision comes from a SEPARATE expert,
+            # so a dirty-only locator never has to learn to stay silent.
+            gl2 = gate_model(Hd, Vd, t2c_d, ipd, vmd)[3]
+            g = torch.sigmoid(gl2).cpu().numpy()
         bt = bl.argmax(-1).cpu().numpy()
         qcand = [None] * len(items)
         if crf is not None:
@@ -434,7 +439,7 @@ def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hys
     elif decoder in ("set", "seg"):
         g_grid = (0.0,)
     elif decoder == "bio":
-        g_grid = (0.0, 0.3, 0.5, 0.7)
+        g_grid = (0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9)
     elif decoder == "v2":
         g_grid = (0.0, 0.5, 1.0, 2.0)                     # soft-gate exponent alpha
     elif decoder in ("simple", "hyst"):
@@ -470,6 +475,31 @@ def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hys
         else:
             n_clean += 1
             clean_ok += (0 if spans else 1)
+    # gold-gate ceiling: a PERFECT clean/dirty decision (clean -> empty, dirty -> the
+    # locator's spans, no gating). This is the locator's headroom: if it is below the
+    # target score, no gate work can get there — the locator itself must improve.
+    gg = []
+    for i in ids:
+        it, q, p, t, g, bt, qsp = per[i]
+        if not it.labels:
+            gg.append(1.0)
+        else:
+            gg.append(char_iou(it.labels, decode(p, t, 1.0, best["tau"], 0.0, bt, qsp), len(p)))
+    # cleanOK <-> dirty Pareto sweep over the gate threshold at the best tau
+    sweep = []
+    for g_thr in (g_grid if decoder == "bio" else ()):
+        io, dio, cok = [], [], 0
+        for i in ids:
+            it, q, p, t, g, bt, qsp = per[i]
+            spans = decode(p, t, g, best["tau"], g_thr, bt, qsp)
+            io.append(char_iou(it.labels, spans, len(p)))
+            if it.labels:
+                dio.append(io[-1])
+            else:
+                cok += (0 if spans else 1)
+        sweep.append(dict(g_thr=g_thr, iou=round(float(np.mean(io)), 4),
+                          dirty=round(float(np.mean(dio)), 4) if dio else 0.0,
+                          cleanOK=round(cok / max(1, n_clean), 3)))
     from shroom.metrics import spearman as _sp
     return per, dict(span_iou=best["iou"], tau=best["tau"], g_thr=best["g_thr"], floor=floor,
                      dirty_iou=float(np.mean(d_ious)) if d_ious else 0.0,
@@ -477,6 +507,8 @@ def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hys
                      dirty_gate_recall=(dirty_open / n_dirty) if n_dirty else 0.0,
                      iou_gate_open=float(np.mean(open_ious)) if open_ious else 0.0,
                      avg_spans=float(np.mean(nspans)),
+                     gold_gate_iou=float(np.mean(gg)),
+                     gate_sweep=sweep,
                      roc_auc=roc, pr_auc=pr, cor_raw=cal, cor_spearman=float(_sp(ga, pa)),
                      cor_submission=float(pearson(sub_g, sub_p)), cor_lbl=cal_lbl)
 
@@ -490,6 +522,11 @@ def main():
     ap.add_argument("--arch", choices=["connector", "linear"], default="connector")
     ap.add_argument("--no_image", action="store_true")
     ap.add_argument("--eval_shuffle", action="store_true")
+    ap.add_argument("--dirty_only", action="store_true",
+                    help="V4 cascade locator: train only on answers WITH hallucinations")
+    ap.add_argument("--gate_from", default=None,
+                    help="V4 cascade: checkpoint of a separately trained gate expert; "
+                         "its gate head replaces this model's at eval time")
     ap.add_argument("--shuffle_v", action="store_true",
                     help="train-time control: every item gets the V of a different image "
                          "(same capacity, no visual signal); connector arch only")
@@ -551,6 +588,12 @@ def main():
         dv_ids = [i for i in dv_ids if i in dv_keep]
     tr = [it for it in items if it.id in set(tr_ids)]
     dv = [it for it in items if it.id in set(dv_ids)]
+    if args.dirty_only:
+        # V4 cascade locator: never sees a clean answer, so nothing pushes it toward
+        # predicting empty — the clean/dirty decision belongs to the gate expert.
+        n0 = len(tr)
+        tr = [it for it in tr if it.labels]
+        print(f"[data] dirty-only locator: train {n0} -> {len(tr)} (dev untouched)", flush=True)
     if args.max_train:
         tr = tr[:args.max_train]
     tr_ds = CacheDS(tr, args.cache_dir, max_chars=args.max_chars, shuffle_v=args.shuffle_v)
@@ -594,12 +637,24 @@ def main():
     n_par = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"[model] arch={args.arch} no_image={args.no_image} trainable={n_par/1e6:.1f}M "
           f"(backbone frozen, cached)", flush=True)
+    gate_model = None
+    if args.gate_from:
+        gck = torch.load(args.gate_from, map_location=device)
+        gstate = gck["model"] if "model" in gck else gck
+        garch = "connector" if "alpha" in gstate else "linear"
+        gate_model = Connector(D, L, dim=args.dim, blocks=args.blocks, arch=garch,
+                               use_gru=not args.no_gru).to(device)
+        gate_model.load_state_dict(gstate, strict=False)
+        gate_model.eval()
+        for p in gate_model.parameters():
+            p.requires_grad_(False)
+        print(f"[gate] external gate expert ({garch}) from {args.gate_from}", flush=True)
     params = (list(model.parameters()) + (list(setdec.parameters()) if setdec else [])
               + (list(segsc.parameters()) if segsc else []) + (list(crf.parameters()) if crf else []))
     opt = torch.optim.AdamW(params, lr=args.lr)
     bce = nn.BCEWithLogitsLoss(reduction="none")
 
-    tag = f"{args.arch}{'_noimg' if args.no_image else ''}{'_shufv' if args.shuffle_v else ''}_{args.decoder}{'_tv' if args.tversky else ''}{'_bio' if args.bio else ''}{'_gc' if args.gate_consistency else ''}{'_ctr' if args.contrastive else ''}{'_set' if args.head=='set' else ''}{'_seg' if args.head=='seg' else ''}{'_crf' if args.head=='crf' else ''}{'_notype' if args.no_type_loss else ''}{'_nogru' if args.no_gru else ''}_s{args.seed}"
+    tag = f"{args.arch}{'_noimg' if args.no_image else ''}{'_shufv' if args.shuffle_v else ''}{'_donly' if args.dirty_only else ''}{'_xgate' if args.gate_from else ''}_{args.decoder}{'_tv' if args.tversky else ''}{'_bio' if args.bio else ''}{'_gc' if args.gate_consistency else ''}{'_ctr' if args.contrastive else ''}{'_set' if args.head=='set' else ''}{'_seg' if args.head=='seg' else ''}{'_crf' if args.head=='crf' else ''}{'_notype' if args.no_type_loss else ''}{'_nogru' if args.no_gru else ''}_s{args.seed}"
     t0 = time.time()
     best_iou_seen = (-1.0, 0)
     for ep in range(1, 0 if args.eval_only else args.epochs + 1):
@@ -715,7 +770,7 @@ def main():
             tot += loss.item(); nb += 1
             if nb % 100 == 0:
                 print(f"[ep {ep} b{nb}/{len(tr_dl)}] loss={tot/nb:.4f}", flush=True)
-        _, m = run_eval(model, dv_dl, device, no_image=args.no_image, decoder=args.decoder, setdec=setdec, segsc=segsc, crf=crf)
+        _, m = run_eval(model, dv_dl, device, no_image=args.no_image, decoder=args.decoder, setdec=setdec, segsc=segsc, crf=crf, gate_model=gate_model)
         if m["span_iou"] > best_iou_seen[0]:
             best_iou_seen = (m["span_iou"], ep)
             st_b = {"model": model.state_dict(), "epoch": ep, "metrics": m}
@@ -730,7 +785,7 @@ def main():
               f"gateRec={m['dirty_gate_recall']:.2f} corR={m['cor_raw']:.3f} corS={m['cor_submission']:.3f}"
               f"{alpha_s} [{(time.time()-t0)/60:.1f}m]", flush=True)
 
-    per, m = run_eval(model, dv_dl, device, no_image=args.no_image, decoder=args.decoder, setdec=setdec, segsc=segsc, crf=crf)
+    per, m = run_eval(model, dv_dl, device, no_image=args.no_image, decoder=args.decoder, setdec=setdec, segsc=segsc, crf=crf, gate_model=gate_model)
     results = {"variant": tag, "metrics": m}
     if args.eval_shuffle and not args.no_image:
         _, ms = run_eval(model, dv_dl, device, shuffle=True, decoder=args.decoder)
