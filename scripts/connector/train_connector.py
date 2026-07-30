@@ -288,7 +288,7 @@ def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hys
         taus = ((0.05, 0.15, 0.3, 0.5, 0.7, 0.85) if decoder == "crf" else
                 (0.3, 0.5, 0.7, 0.9, 0.95) if decoder == "set" else
                 (0.2, 0.35, 0.5, 0.65, 0.8) if decoder == "seg" else
-                (0.0,) if decoder == "bio" else
+                (0.0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5) if decoder == "bio" else
                 (0.4, 0.5, 0.6, 0.7, 0.8) if decoder == "v2" else
                 (0.05,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95))
     model.eval()
@@ -420,8 +420,18 @@ def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hys
                 spans.append({"start": a, "end": b2, "prob": conf, "label": CATS[ti]})
             return sorted(spans, key=lambda sp: sp["start"])
         if decoder == "bio":
-            spans = bio_spans(bt, p, t)
-            return [] if (g_thr > 0 and g < g_thr) else spans
+            # two-signal null decision: the external/own gate AND the locator's own
+            # confidence (top-k mean of char probs). A dirty-only locator labels
+            # everything (it never saw a clean answer), so its confidence stats are
+            # the "free silence" that joint models get from a quiet BIO head.
+            if g_thr > 0 and g < g_thr:
+                return []
+            if tau > 0:
+                arr = np.asarray(p)
+                k5 = max(3, len(arr) // 20)
+                if len(arr) == 0 or np.sort(arr)[-k5:].mean() < tau:
+                    return []
+            return bio_spans(bt, p, t)
         if decoder == "v2":
             # soft token-derived gate: p' = p * g_eff^alpha, alpha encoded via g_thr slot
             import numpy as _np
