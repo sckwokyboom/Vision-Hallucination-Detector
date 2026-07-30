@@ -500,8 +500,23 @@ def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hys
         sweep.append(dict(g_thr=g_thr, iou=round(float(np.mean(io)), 4),
                           dirty=round(float(np.mean(dio)), 4) if dio else 0.0,
                           cleanOK=round(cok / max(1, n_clean), 3)))
+    # gate quality as a standalone expert: AUC + recall/specificity operating points
+    g_all = np.array([float(per[i][4]) for i in ids])
+    y_all = np.array([1.0 if per[i][0].labels else 0.0 for i in ids])
+    try:
+        gate_auc = float(roc_auc_score(y_all, g_all))
+    except ValueError:
+        gate_auc = 0.5
+    gate_ops = []
+    for thr in (0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95):
+        pred = g_all >= thr
+        gate_ops.append(dict(
+            thr=thr,
+            dirty_recall=round(float(pred[y_all > 0].mean()), 3) if (y_all > 0).any() else 0.0,
+            clean_spec=round(float((~pred[y_all == 0]).mean()), 3) if (y_all == 0).any() else 0.0))
     from shroom.metrics import spearman as _sp
     return per, dict(span_iou=best["iou"], tau=best["tau"], g_thr=best["g_thr"], floor=floor,
+                     gate_auc=gate_auc, gate_ops=gate_ops,
                      dirty_iou=float(np.mean(d_ious)) if d_ious else 0.0,
                      clean_empty=(clean_ok / n_clean) if n_clean else 1.0,
                      dirty_gate_recall=(dirty_open / n_dirty) if n_dirty else 0.0,
@@ -527,6 +542,10 @@ def main():
     ap.add_argument("--gate_from", default=None,
                     help="V4 cascade: checkpoint of a separately trained gate expert; "
                          "its gate head replaces this model's at eval time")
+    ap.add_argument("--gate_only", action="store_true",
+                    help="V4 gate expert: train ONLY the clean/dirty decision — focal "
+                         "loss, class-balanced sampling, best checkpoint by gate AUC")
+    ap.add_argument("--focal_gamma", type=float, default=2.0)
     ap.add_argument("--shuffle_v", action="store_true",
                     help="train-time control: every item gets the V of a different image "
                          "(same capacity, no visual signal); connector arch only")
@@ -564,6 +583,14 @@ def main():
     args = ap.parse_args()
 
     l1, l2, l3, l4, l5 = [float(x) for x in args.lambdas.split(",")]
+    if args.dirty_only and not args.gate_only:
+        # V4 loss hygiene: a dirty-only locator sees gate targets that are ALL 1, so the
+        # gate BCE only teaches its (unused) gate head to say "dirty" and the
+        # gate-consistency term drags char probs toward that constant. Both off.
+        if l5 > 0 or args.gate_consistency:
+            print("[loss] dirty_only: gate BCE and gate-consistency disabled "
+                  "(the gate belongs to the gate expert)", flush=True)
+        l5, args.gate_consistency = 0.0, False
     os.makedirs(args.out_dir, exist_ok=True)
     torch.manual_seed(args.seed); random.seed(args.seed); np.random.seed(args.seed)
     # Default is unchanged (cuda if present, else cpu) — the Mac results were produced on
@@ -605,7 +632,18 @@ def main():
         json.dump(manifest, f)
     print(f"[data] cached train={len(tr_ds)} dev={len(dv_ds)} (of {len(tr)}/{len(dv)}) — manifest frozen", flush=True)
     assert len(tr_ds) > 50, "too few cached items — run extract_features.py first"
-    if args.contrastive:
+    if args.gate_only:
+        # class-balanced batches: clean answers are ~21% of train, and an unbalanced
+        # gate expert just learns the prior. Weight so clean/dirty are drawn 50/50.
+        lab = np.array([1.0 if it.labels else 0.0 for it in tr_ds.items])
+        w = np.where(lab > 0, 0.5 / max(1, lab.sum()), 0.5 / max(1, (1 - lab).sum()))
+        sampler = torch.utils.data.WeightedRandomSampler(
+            torch.as_tensor(w, dtype=torch.double), num_samples=len(tr_ds),
+            replacement=True, generator=torch.Generator().manual_seed(args.seed))
+        tr_dl = DataLoader(tr_ds, batch_size=args.batch, sampler=sampler, collate_fn=collate)
+        print(f"[data] gate expert: balanced sampling over {int(lab.sum())} dirty / "
+              f"{int((1 - lab).sum())} clean", flush=True)
+    elif args.contrastive:
         tr_dl = DataLoader(tr_ds, batch_sampler=GroupedBatchSampler(tr_ds, args.batch, args.seed),
                            collate_fn=collate)
     else:
@@ -654,7 +692,7 @@ def main():
     opt = torch.optim.AdamW(params, lr=args.lr)
     bce = nn.BCEWithLogitsLoss(reduction="none")
 
-    tag = f"{args.arch}{'_noimg' if args.no_image else ''}{'_shufv' if args.shuffle_v else ''}{'_donly' if args.dirty_only else ''}{'_xgate' if args.gate_from else ''}_{args.decoder}{'_tv' if args.tversky else ''}{'_bio' if args.bio else ''}{'_gc' if args.gate_consistency else ''}{'_ctr' if args.contrastive else ''}{'_set' if args.head=='set' else ''}{'_seg' if args.head=='seg' else ''}{'_crf' if args.head=='crf' else ''}{'_notype' if args.no_type_loss else ''}{'_nogru' if args.no_gru else ''}_s{args.seed}"
+    tag = f"{args.arch}{'_noimg' if args.no_image else ''}{'_shufv' if args.shuffle_v else ''}{'_donly' if args.dirty_only else ''}{'_xgate' if args.gate_from else ''}{'_gateonly' if args.gate_only else ''}_{args.decoder}{'_tv' if args.tversky else ''}{'_bio' if args.bio else ''}{'_gc' if args.gate_consistency else ''}{'_ctr' if args.contrastive else ''}{'_set' if args.head=='set' else ''}{'_seg' if args.head=='seg' else ''}{'_crf' if args.head=='crf' else ''}{'_notype' if args.no_type_loss else ''}{'_nogru' if args.no_gru else ''}_s{args.seed}"
     t0 = time.time()
     best_iou_seen = (-1.0, 0)
     for ep in range(1, 0 if args.eval_only else args.epochs + 1):
@@ -668,6 +706,15 @@ def main():
                                      valid.to(device), gate.to(device))
             bio_t = bio_t.to(device)
             ql, pl, tl, gl, bl, feats = model(H, V, t2c, inpos, vmask)
+            if args.gate_only:
+                # focal BCE on the gate head alone — the expert's whole job
+                pt = torch.sigmoid(gl) * gate + (1 - torch.sigmoid(gl)) * (1 - gate)
+                loss = ((1 - pt).clamp(min=1e-6) ** args.focal_gamma * bce(gl, gate)).mean()
+                opt.zero_grad(); loss.backward(); opt.step()
+                tot += loss.item(); nb += 1
+                if nb % 100 == 0:
+                    print(f"[ep {ep} b{nb}/{len(tr_dl)}] loss={tot/nb:.4f}", flush=True)
+                continue
             def exmean(x):                                     # per-example, then batch
                 return ((x * valid).sum(1) / valid.sum(1).clamp(min=1)).mean()
             m = (y > 0).float()
@@ -771,8 +818,9 @@ def main():
             if nb % 100 == 0:
                 print(f"[ep {ep} b{nb}/{len(tr_dl)}] loss={tot/nb:.4f}", flush=True)
         _, m = run_eval(model, dv_dl, device, no_image=args.no_image, decoder=args.decoder, setdec=setdec, segsc=segsc, crf=crf, gate_model=gate_model)
-        if m["span_iou"] > best_iou_seen[0]:
-            best_iou_seen = (m["span_iou"], ep)
+        sel = m["gate_auc"] if args.gate_only else m["span_iou"]
+        if sel > best_iou_seen[0]:
+            best_iou_seen = (sel, ep)
             st_b = {"model": model.state_dict(), "epoch": ep, "metrics": m}
             if crf is not None: st_b["crf"] = crf.state_dict()
             if setdec is not None: st_b["setdec"] = setdec.state_dict()
@@ -782,7 +830,8 @@ def main():
                    if args.arch == "connector" else "")
         print(f"[ep {ep}] loss={tot/nb:.4f} dev: iou={m['span_iou']:.4f} (fl={m['floor']:.3f}, "
               f"tau={m['tau']}, g={m['g_thr']}) dirty={m['dirty_iou']:.3f} cleanOK={m['clean_empty']:.2f} "
-              f"gateRec={m['dirty_gate_recall']:.2f} corR={m['cor_raw']:.3f} corS={m['cor_submission']:.3f}"
+              f"gateRec={m['dirty_gate_recall']:.2f} corR={m['cor_raw']:.3f} corS={m['cor_submission']:.3f} "
+              f"gAUC={m['gate_auc']:.3f}"
               f"{alpha_s} [{(time.time()-t0)/60:.1f}m]", flush=True)
 
     per, m = run_eval(model, dv_dl, device, no_image=args.no_image, decoder=args.decoder, setdec=setdec, segsc=segsc, crf=crf, gate_model=gate_model)
