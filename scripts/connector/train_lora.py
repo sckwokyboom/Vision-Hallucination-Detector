@@ -35,7 +35,8 @@ from model import Connector, tversky_loss, ranking_loss              # noqa: E40
 from train_connector import build_example, collate, run_eval, bio_spans  # noqa: E402
 from extract_features import (build_text, review_body, encode_review,  # noqa: E402
                               find_subseq, load_model)
-from lora import inject_lora, lora_parameters, lora_state_dict        # noqa: E402
+from lora import (inject_lora, lora_parameters, lora_state_dict,      # noqa: E402
+                  load_lora_state)
 
 
 # ------------------------------------------------------------------- live backbone
@@ -250,6 +251,11 @@ def main():
         ck = torch.load(args.init_from, map_location=args.device)
         dec.load_state_dict(ck["model"] if "model" in ck else ck, strict=False)
         print(f"[dec ] warm-started from {args.init_from}", flush=True)
+        if "lora" in ck:
+            # resuming one of OUR checkpoints: restore the adapters too, so
+            # --epochs 0 --init_from <best> reproduces and re-scores that model
+            n_res = load_lora_state(bb.model, ck["lora"])
+            print(f"[lora] restored {n_res} adapter tensors", flush=True)
 
     lp = lora_parameters(bb.model)
     opt = torch.optim.AdamW([{"params": dec.parameters(), "lr": args.lr_dec},
@@ -259,9 +265,20 @@ def main():
     print(f"[model] arch={args.arch} decoder={n_dec/1e6:.1f}M lora={n_lora/1e6:.1f}M",
           flush=True)
 
-    tag = f"lora_{args.arch}_f{args.lora_from}_r{args.lora_r}_s{args.seed}"
+    frozen_run = args.freeze_lora_epochs >= args.epochs      # continuation control: no LoRA ever
+    tag = (f"lora_{args.arch}{'_frozen' if frozen_run else ''}"
+           f"_f{args.lora_from}_r{args.lora_r}_s{args.seed}")
     best_iou, t0 = -1.0, time.time()
     rng = np.random.default_rng(args.seed)
+
+    if args.init_from and args.epochs > 0:
+        # step-0 check: a warm-started decoder must reproduce its source checkpoint's
+        # dev score through the LIVE pipeline (fp16-cache vs live-fp32 rounding aside).
+        # A big gap here means weights didn't load or the live features differ.
+        _, m0 = eval_epoch(bb, dec, ev, args.image_dir, args.device, args.max_chars)
+        print(f"[ep 0] warm-start reproduction: iou={m0['span_iou']:.4f} "
+              f"corR={m0['cor_raw']:.3f} (compare against the source checkpoint's dev iou)",
+              flush=True)
 
     for ep in range(1, args.epochs + 1):
         lora_on = ep > args.freeze_lora_epochs
