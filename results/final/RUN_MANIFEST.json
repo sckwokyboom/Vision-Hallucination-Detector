@@ -1,0 +1,44 @@
+{
+  "created_at_local": "2026-07-30",
+  "repository": "/Users/sckwoky/Projects/Vision-Hallucination-Detector",
+  "git": {
+    "head_before_changes": "4b6946db62fa4f7cd9706eafe7739b5babee9ce4",
+    "pull_status": "attempted before edits; blocked by sandbox write restriction to .git/FETCH_HEAD and then interrupted by user"
+  },
+  "environment": {
+    "python": "3.14.0 (v3.14.0:ebf955df7a8, Oct 7 2025, 08:20:14) [Clang 16.0.0]",
+    "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "torch": "2.12.0",
+    "transformers": "5.8.1",
+    "numpy": "2.4.3",
+    "scipy": "1.17.1",
+    "pandas": "3.0.3",
+    "sklearn": "unavailable in base python3 environment; local metric fallbacks enabled",
+    "gpu": "cuda=unavailable"
+  },
+  "model": {
+    "gemma_4_12b_it": "not locally resolved in this run; pass --model_id to train_lora.py/predict_lora.py",
+    "dtype": "bf16 expected by protocol unless overridden by command/config"
+  },
+  "splits": {
+    "eval_protocol": "splits/en.eval_protocol.json",
+    "tune_dev_count": 202,
+    "heldout_count": 157,
+    "heldout_policy": "not evaluated in this run"
+  },
+  "seed_policy": {
+    "screening_seed": 13,
+    "finalist_seeds": [13, 42, 77]
+  },
+  "artifacts": {
+    "requested_a2_checkpoint": "results/lora_h100/a2/best_iou_lora_linear_f24_r16_s13.pt",
+    "requested_a2_checkpoint_present": false,
+    "official_train_gold_present": false,
+    "official_test_reference_present": false
+  },
+  "implemented_entrypoints": {
+    "lora_training": "scripts/connector/train_lora.py --cascade_train",
+    "fixed_lora_prediction": "scripts/connector/predict_lora.py --checkpoint <best.pt> --input <jsonl> --image_dir <images> --output <predictions.jsonl> --tau <fixed> --gate_threshold <fixed>"
+  },
+  "run_args": []
+}

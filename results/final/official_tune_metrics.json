@@ -1,0 +1,5 @@
+{
+  "status": "not_run",
+  "reason": "Required A2 checkpoint and local gold data are not present in this checkout.",
+  "heldout_used": false
+}

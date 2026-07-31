@@ -1,0 +1,15 @@
+{
+  "status": "not_frozen",
+  "checkpoint_family": null,
+  "epoch_count": null,
+  "seed_policy": [13, 42, 77],
+  "losses": null,
+  "thresholds": null,
+  "decoder": "bio",
+  "type_head_policy": "not_trained",
+  "resize": null,
+  "model_version": "Gemma-4-12B-it model_id not locally resolved",
+  "exact_inference_command": null,
+  "heldout_allowed": false,
+  "reason": "Required A2 checkpoint/data are missing, so no finalist has been frozen."
+}

@@ -1,0 +1,5 @@
+{
+  "status": "not_run",
+  "reason": "No frozen finalist was produced; protocol forbids held-out evaluation before freezing.",
+  "heldout_used": false
+}
