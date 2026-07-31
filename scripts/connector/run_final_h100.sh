@@ -5,6 +5,7 @@
 #   bash scripts/connector/run_final_h100.sh --gpu 1 --phase a2-backup
 #   bash scripts/connector/run_final_h100.sh --gpu 1 --phase cascade-screen
 #   bash scripts/connector/run_final_h100.sh --gpu 1 --phase a2-backup --test-file /path/test.en.jsonl
+#   bash scripts/connector/run_final_h100.sh --gpu 1 --phase a2-backup --postprocess --span-min-len 4 --span-min-prob 0.20
 #
 # Other phases:
 #   a2-train-s13        train cold-start A2 seed 13 if the old checkpoint is absent
@@ -23,6 +24,13 @@ MODEL="${MODEL:-/workspace/data/models/gemma-4-12B-it}"
 LORA_FROM="${LORA_FROM:-24}"
 A2_CK="${A2_CK:-results/lora_h100/a2/best_iou_lora_linear_f24_r16_s13.pt}"
 TEST_FILE="${TEST_FILE:-}"
+POSTPROCESS="${POSTPROCESS:-0}"
+SPAN_MIN_LEN="${SPAN_MIN_LEN:-1}"
+SPAN_MIN_PROB="${SPAN_MIN_PROB:-0.0}"
+SPAN_LABEL_POLICY="${SPAN_LABEL_POLICY:-keep}"
+SPAN_DEFAULT_LABEL="${SPAN_DEFAULT_LABEL:-invention}"
+SPAN_MERGE_GAP="${SPAN_MERGE_GAP:-0}"
+SPAN_TRIM_SYMBOLS="${SPAN_TRIM_SYMBOLS:-0}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -33,7 +41,14 @@ while [ $# -gt 0 ]; do
     --lora-from) LORA_FROM="$2"; shift 2 ;;
     --a2-ck) A2_CK="$2"; shift 2 ;;
     --test-file) TEST_FILE="$2"; shift 2 ;;
-    -h|--help) sed -n '2,23p' "$0"; exit 0 ;;
+    --postprocess) POSTPROCESS=1; shift ;;
+    --span-min-len) SPAN_MIN_LEN="$2"; shift 2 ;;
+    --span-min-prob) SPAN_MIN_PROB="$2"; shift 2 ;;
+    --span-label-policy) SPAN_LABEL_POLICY="$2"; shift 2 ;;
+    --span-default-label) SPAN_DEFAULT_LABEL="$2"; shift 2 ;;
+    --span-merge-gap) SPAN_MERGE_GAP="$2"; shift 2 ;;
+    --span-trim-symbols) SPAN_TRIM_SYMBOLS=1; shift ;;
+    -h|--help) awk '/^# Final/{show=1} show && /^set -euo pipefail/{exit} show {sub(/^# ?/, ""); print}' "$0"; exit 0 ;;
     -*) echo "unknown option: $1" >&2; exit 2 ;;
     *) echo "unexpected positional argument: $1" >&2; exit 2 ;;
   esac
@@ -175,6 +190,28 @@ find_a2_checkpoint() {
   echo "$found"
 }
 
+postprocess_file() {
+  local pred="$1"
+  local items="$2"
+  local out="$3"
+  local -a cmd=(
+    python scripts/official/postprocess_submission.py
+    --pred "$pred"
+    --items "$items"
+    --out "$out"
+    --trim_edges
+    --min_len "$SPAN_MIN_LEN"
+    --min_prob "$SPAN_MIN_PROB"
+    --label_policy "$SPAN_LABEL_POLICY"
+    --default_label "$SPAN_DEFAULT_LABEL"
+    --merge_gap "$SPAN_MERGE_GAP"
+  )
+  if [ "$SPAN_TRIM_SYMBOLS" = "1" ]; then
+    cmd+=(--trim_symbols)
+  fi
+  "${cmd[@]}"
+}
+
 phase_a2_train_s13() {
   setup
   mkdir -p results/lora_h100/a2
@@ -198,14 +235,22 @@ phase_a2_backup() {
   ck=$(find_a2_checkpoint)
   checkpoint_provenance "$ck" | tee "$FINAL/current_a2/checkpoint_provenance.json"
 
+  local tune_pred="$FINAL/current_a2/tune_predictions.jsonl"
+  if [ "$POSTPROCESS" = "1" ]; then
+    tune_pred="$FINAL/current_a2/tune_predictions.raw.jsonl"
+  fi
   python scripts/connector/predict_lora.py \
     --checkpoint "$ck" \
     --model_id "$MODEL" \
     --input "$TRAIN_EN" \
     --image_dir "$IMG_DIR" \
-    --output "$FINAL/current_a2/tune_predictions.jsonl" \
+    --output "$tune_pred" \
     --decoder bio \
     --device "$DEVICE"
+
+  if [ "$POSTPROCESS" = "1" ]; then
+    postprocess_file "$tune_pred" splits/dev.en.jsonl "$FINAL/current_a2/tune_predictions.jsonl"
+  fi
 
   python scripts/official/eval_official.py \
     --gold splits/dev.en.jsonl \
@@ -214,14 +259,22 @@ phase_a2_backup() {
     2>&1 | tee "$FINAL/current_a2/official_eval.txt"
 
   resolve_test_file
+  local submission_pred="$FINAL/submission/submission_a2_en.jsonl"
+  if [ "$POSTPROCESS" = "1" ]; then
+    submission_pred="$FINAL/submission/submission_a2_en.raw.jsonl"
+  fi
   python scripts/connector/predict_lora.py \
     --checkpoint "$ck" \
     --model_id "$MODEL" \
     --input "$TEST_EN" \
     --image_dir "$IMG_DIR" \
-    --output "$FINAL/submission/submission_a2_en.jsonl" \
+    --output "$submission_pred" \
     --decoder bio \
     --device "$DEVICE"
+
+  if [ "$POSTPROCESS" = "1" ]; then
+    postprocess_file "$submission_pred" "$TEST_EN" "$FINAL/submission/submission_a2_en.jsonl"
+  fi
 
   python scripts/official/format_checker.py \
     "$FINAL/submission/submission_a2_en.jsonl" \
