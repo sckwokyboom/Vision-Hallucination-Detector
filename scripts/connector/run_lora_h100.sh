@@ -81,7 +81,7 @@ for pat, hdr in [("results/v3_h100/summary_linear_bio*_s13.json", "A0 (frozen, H
     for f in files:
         d = json.load(open(f)); m = d["metrics"]
         print(f"{d['variant']:52}{m['span_iou']:>7.4f}{m['dirty_iou']:>7.3f}"
-              f"{m['clean_empty']:>6.2f}{m['cor_raw']:>7.3f}")
+              f"{m['clean_empty']:>6.2f}{m['pooled_pearson_debug']:>7.3f}")
 print("""
 factorial read-out: A2-A0 = LoRA gain | A1-A0 = visual-memory gain
                     A3-A2 = memory after adaptation | A3-A1 = adaptation given memory

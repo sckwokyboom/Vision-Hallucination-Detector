@@ -1,7 +1,24 @@
 import pandas as pd
 from scipy.stats import spearmanr
 import numpy as np
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support
+try:
+    from sklearn.metrics import accuracy_score, precision_recall_fscore_support
+except Exception:  # pragma: no cover - fallback for inference-only environments
+    def accuracy_score(refs, preds):
+        refs = list(refs)
+        preds = list(preds)
+        return sum(r == p for r, p in zip(refs, preds)) / max(1, len(refs))
+
+    def precision_recall_fscore_support(refs, preds, average="binary", zero_division=0,
+                                        pos_label=True):
+        tp = sum(r == pos_label and p == pos_label for r, p in zip(refs, preds))
+        fp = sum(r != pos_label and p == pos_label for r, p in zip(refs, preds))
+        fn = sum(r == pos_label and p != pos_label for r, p in zip(refs, preds))
+        precision = tp / (tp + fp) if tp + fp else zero_division
+        recall = tp / (tp + fn) if tp + fn else zero_division
+        f1 = (2 * precision * recall / (precision + recall)
+              if precision + recall else zero_division)
+        return precision, recall, f1, None
 import argparse as ap
 from collections import Counter
 
@@ -167,4 +184,3 @@ if __name__ == '__main__':
     p.add_argument('output_file', type=str)
     a = p.parse_args()
     _ = main(a.ref_file, a.pred_file, a.output_file, verbose=True)
-

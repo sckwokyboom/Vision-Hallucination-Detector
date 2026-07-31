@@ -85,10 +85,10 @@ def rows(pat):
 print(f"{'variant':52}{'iou':>7}{'dirty':>7}{'clnOK':>6}{'corR':>7}")
 print("--- A0 reference (results/v3_h100, arch=linear, h_only) ---")
 for v, m, _ in rows("results/v3_h100/summary_linear_bio*_s13.json"):
-    print(f"{v:52}{m['span_iou']:>7.4f}{m['dirty_iou']:>7.3f}{m['clean_empty']:>6.2f}{m['cor_raw']:>7.3f}")
+    print(f"{v:52}{m['span_iou']:>7.4f}{m['dirty_iou']:>7.3f}{m['clean_empty']:>6.2f}{m['pooled_pearson_debug']:>7.3f}")
 print("--- A1 / controls (this run) ---")
 for v, m, ms in rows("results/uva_h100/summary_*.json"):
-    print(f"{v:52}{m['span_iou']:>7.4f}{m['dirty_iou']:>7.3f}{m['clean_empty']:>6.2f}{m['cor_raw']:>7.3f}")
+    print(f"{v:52}{m['span_iou']:>7.4f}{m['dirty_iou']:>7.3f}{m['clean_empty']:>6.2f}{m['pooled_pearson_debug']:>7.3f}")
     if ms:
         print(f"{'  ^ eval-time shuffled-image control':52}{ms['span_iou']:>7.4f}")
 print("""
