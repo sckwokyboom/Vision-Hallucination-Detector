@@ -774,6 +774,19 @@ def main():
         dv_ids = [i for i in dv_ids if i in dv_keep]
     tr = [it for it in items if it.id in set(tr_ids)]
     dv = [it for it in items if it.id in set(dv_ids)]
+    if args.eval_ids:
+        # Hard image-disjointness invariant: NOTHING that shares an image with a
+        # protocol eval item may be trained on. The seed-13 group split guarantees
+        # this only for the exact en-only file the protocol was built from; any other
+        # composition (multilingual concat: 121/142 en-eval images also appear in the
+        # fr train set!) would leak through shared images without this filter.
+        eids = set(prot.get("tune_dev") or []) | set(prot.get("heldout") or [])
+        eval_imgs = {it.image_name for it in items if it.id in eids}
+        n0 = len(tr)
+        tr = [it for it in tr if it.image_name not in eval_imgs]
+        if len(tr) != n0:
+            print(f"[data] image-disjointness: dropped {n0 - len(tr)} train items "
+                  f"sharing images with protocol eval", flush=True)
     if args.dirty_only:
         # V4 cascade locator: never sees a clean answer, so nothing pushes it toward
         # predicting empty — the clean/dirty decision belongs to the gate expert.
