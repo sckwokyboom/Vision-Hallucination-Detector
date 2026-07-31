@@ -69,6 +69,14 @@ def lora_parameters(model):
             for p in (mod.A, mod.B)]
 
 
+def set_lora_training(model, enabled):
+    """Keep the frozen backbone in eval mode, while toggling LoRA dropout only."""
+    model.eval()
+    for module in model.modules():
+        if isinstance(module, LoRALinear):
+            module.train(enabled)
+
+
 def lora_state_dict(model):
     return {n: p for n, p in model.state_dict().items()
             if n.endswith((".A", ".B")) and ".base." not in n.rsplit(".", 1)[0]}

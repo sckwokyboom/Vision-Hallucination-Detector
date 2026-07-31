@@ -26,9 +26,85 @@ from torch.utils.data import Dataset, DataLoader
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from shroom.data import load_jsonl                              # noqa: E402
 from shroom.split import group_split_by_image                   # noqa: E402
-from shroom.metrics import (gold_char_probs, gold_char_probs_sum,  # noqa: E402
-                            char_iou, pearson)
-from sklearn.metrics import roc_auc_score, average_precision_score  # noqa: E402
+from shroom.metrics import gold_char_probs, gold_char_probs_sum, pearson  # noqa: E402
+try:
+    from sklearn.metrics import roc_auc_score, average_precision_score  # noqa: E402
+except Exception:  # pragma: no cover - exercised only in lean inference envs
+    def _rankdata_np(a):
+        a = np.asarray(a, dtype=float)
+        sorter = np.argsort(a, kind="mergesort")
+        inv = np.empty(len(a), dtype=int)
+        inv[sorter] = np.arange(len(a))
+        a_sorted = a[sorter]
+        obs = np.r_[True, a_sorted[1:] != a_sorted[:-1]]
+        dense = obs.cumsum()[inv]
+        count = np.r_[np.flatnonzero(obs), len(a)]
+        return 0.5 * (count[dense] + count[dense - 1] + 1)
+
+    def roc_auc_score(y_true, y_score):
+        y_true = np.asarray(y_true) > 0
+        if y_true.min() == y_true.max():
+            raise ValueError("Only one class present in y_true")
+        ranks = _rankdata_np(y_score)
+        n_pos = int(y_true.sum())
+        n_neg = int((~y_true).sum())
+        return float((ranks[y_true].sum() - n_pos * (n_pos + 1) / 2) / (n_pos * n_neg))
+
+    def average_precision_score(y_true, y_score):
+        y_true = np.asarray(y_true) > 0
+        if not y_true.any():
+            return 0.0
+        order = np.argsort(-np.asarray(y_score, dtype=float), kind="mergesort")
+        y = y_true[order]
+        tp = y.cumsum()
+        precision = tp / (np.arange(len(y)) + 1)
+        return float(precision[y].mean())
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                "official"))
+try:
+    from official_scorer import (score_cor as official_score_cor,  # noqa: E402
+                                 score_cor_lbl as official_score_cor_lbl,
+                                 score_iou as official_score_iou)
+except Exception:  # pragma: no cover - fallback for inference-only environments
+    from shroom.metrics import spearman as _fallback_spearman  # noqa: E402
+
+    def official_score_cor(ref_dict, pred_dict, label_filtered_=None):
+        assert ref_dict["id"] == pred_dict["id"]
+        ref_vec = [0.0] * ref_dict["text_len"]
+        pred_vec = [0.0] * ref_dict["text_len"]
+        ref_labels = (ref_dict["labels"] if label_filtered_ is None
+                      else [s for s in ref_dict["labels"] if s["label"] == label_filtered_])
+        pred_labels = (pred_dict["labels"] if label_filtered_ is None
+                       else [s for s in pred_dict["labels"] if s["label"] == label_filtered_])
+        for span in ref_labels:
+            for idx in range(span["start"], span["end"]):
+                ref_vec[idx] += span["prob"]
+        for span in pred_labels:
+            for idx in range(span["start"], span["end"]):
+                pred_vec[idx] = span["prob"]
+        ref_cmps = {round(flt, 8) for flt in ref_vec}
+        pred_cmps = {round(flt, 8) for flt in pred_vec}
+        if len(pred_cmps) == 1 or len(ref_cmps) == 1:
+            if len(pred_cmps) != len(ref_cmps):
+                return 0.0
+            if ref_cmps == {0.0}:
+                return float(pred_cmps == {0.0})
+            return float(pred_cmps != {0.0})
+        return _fallback_spearman(ref_vec, pred_vec)
+
+    def official_score_cor_lbl(ref_dict, pred_dict):
+        labels = {span["label"] for rec in (ref_dict, pred_dict) for span in rec["labels"]}
+        return (sum(official_score_cor(ref_dict, pred_dict, label) for label in labels)
+                / len(labels)) if labels else 1.0
+
+    def official_score_iou(ref_dict, pred_dict):
+        assert ref_dict["id"] == pred_dict["id"]
+        ref_indices = {idx for span in ref_dict["labels"] for idx in range(span["start"], span["end"])}
+        pred_indices = {idx for span in pred_dict["labels"] for idx in range(span["start"], span["end"])}
+        if not pred_indices and not ref_indices:
+            return 1.0
+        return len(ref_indices & pred_indices) / len(ref_indices | pred_indices)
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from model import (Connector, SetDecoder, set_decode, SegmentScorer, dp_select, SemiCRF,  # noqa: E402
@@ -282,6 +358,93 @@ def merge_spans(q, ptype, tau):
     return out
 
 
+def sanitize_spans(spans, resp_len=None):
+    """Official-format span records with exact Python scalar types."""
+    out = []
+    for sp in spans or []:
+        a, b = int(sp["start"]), int(sp["end"])
+        if resp_len is not None:
+            a = max(0, min(a, resp_len))
+            b = max(0, min(b, resp_len))
+        if not (a < b):
+            continue
+        prob = float(sp.get("prob", 1.0))
+        if not np.isfinite(prob):
+            prob = 0.0
+        label = str(sp.get("label", "other"))
+        if label not in CATS:
+            label = "other"
+        out.append({"start": a, "end": b, "prob": prob, "label": label})
+    return out
+
+
+def topk_confidence(p):
+    arr = np.asarray(p, dtype=float)
+    if arr.size == 0:
+        return 0.0
+    k = max(3, int(arr.size) // 20)
+    k = min(k, arr.size)
+    return float(np.sort(arr)[-k:].mean())
+
+
+def decoder_null_decision(decoder, p, g, tau, g_thr, bt=None, qsp=None):
+    """Whether inference intentionally returns the null submission for this item."""
+    if decoder == "crf":
+        return (not qsp) or qsp.get("p_empty", 0.0) > tau
+    if decoder == "bio":
+        if g_thr > 0 and g < g_thr:
+            return True
+        if tau > 0 and topk_confidence(p) < tau:
+            return True
+        return False
+    if decoder in ("gate", "gate_hyst"):
+        return g < g_thr
+    return False
+
+
+def decode_spans(decoder, p, t, g, tau, g_thr, bt=None, qsp=None, resp_len=None):
+    """Decode exactly the spans that the system would serialize for submission."""
+    if decoder_null_decision(decoder, p, g, tau, g_thr, bt, qsp):
+        return []
+    if decoder == "crf":
+        return sanitize_spans(qsp["by_bias"].get(g_thr, []), resp_len)
+    if decoder == "seg":
+        if not qsp:
+            return []
+        cands = [(a, b, ti) for _, a, b, ti in qsp]
+        scores = [c[0] for c in qsp]
+        sel = dp_select(cands, scores, tau)
+        spans = ({"start": cands[i][0], "end": cands[i][1],
+                  "prob": scores[i], "label": CATS[cands[i][2]]}
+                 for i in sel)
+        return sanitize_spans(sorted(spans, key=lambda sp: sp["start"]), resp_len)
+    if decoder == "set":
+        spans = []
+        for conf, a, b, ti in sorted(qsp or [], key=lambda c: -c[0]):
+            if conf < tau:
+                break
+            if any(not (b <= sp["start"] or a >= sp["end"]) for sp in spans):
+                continue
+            spans.append({"start": a, "end": b, "prob": conf, "label": CATS[ti]})
+        return sanitize_spans(sorted(spans, key=lambda sp: sp["start"]), resp_len)
+    if decoder == "bio":
+        return sanitize_spans(bio_spans(bt, p, t), resp_len)
+    if decoder == "v2":
+        p2 = np.asarray(p) * ((0.5 * g + 0.5 * topk_confidence(p)) ** g_thr)
+        return sanitize_spans(peak_spans(p2, t, rel_hi=tau, rel_lo=0.55 * tau), resp_len)
+    if decoder in ("hyst", "gate_hyst"):
+        return sanitize_spans(hysteresis_spans(p, t, tau, 0.6 * tau), resp_len)
+    return sanitize_spans(merge_spans(p, t, tau), resp_len)
+
+
+def official_gold_record(it):
+    return {"id": it.id, "labels": it.labels, "text_len": len(it.response)}
+
+
+def official_pred_record(it, spans):
+    return {"id": it.id, "labels": sanitize_spans(spans, len(it.response))}
+
+
 @torch.no_grad()
 def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hyst", taus=None, setdec=None, segsc=None, crf=None, gate_model=None):
     if taus is None:
@@ -394,56 +557,9 @@ def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hys
         gt += yt.flatten().tolist(); pt += t.flatten().tolist()
     cal_lbl = pearson(gt, pt)
     floor = float(np.mean([1.0 if not per[i][0].labels else 0.0 for i in ids]))
-    def decode(p, t, g, tau, g_thr, bt=None, qsp=None):
-        if decoder == "crf":
-            if not qsp:
-                return []
-            if qsp["p_empty"] > tau:                 # null-aware abstention
-                return []
-            return qsp["by_bias"].get(g_thr, [])
-        if decoder == "seg":
-            if not qsp:
-                return []
-            cands3 = [(a, b2, ti) for _, a, b2, ti in qsp]
-            scores3 = [c[0] for c in qsp]
-            sel = dp_select(cands3, scores3, tau)
-            return sorted(({"start": cands3[i5][0], "end": cands3[i5][1],
-                            "prob": scores3[i5], "label": CATS[cands3[i5][2]]}
-                           for i5 in sel), key=lambda sp: sp["start"])
-        if decoder == "set":
-            spans = []
-            for conf, a, b2, ti in sorted(qsp or [], key=lambda c: -c[0]):
-                if conf < tau:
-                    break
-                if any(not (b2 <= sp["start"] or a >= sp["end"]) for sp in spans):
-                    continue
-                spans.append({"start": a, "end": b2, "prob": conf, "label": CATS[ti]})
-            return sorted(spans, key=lambda sp: sp["start"])
-        if decoder == "bio":
-            # two-signal null decision: the external/own gate AND the locator's own
-            # confidence (top-k mean of char probs). A dirty-only locator labels
-            # everything (it never saw a clean answer), so its confidence stats are
-            # the "free silence" that joint models get from a quiet BIO head.
-            if g_thr > 0 and g < g_thr:
-                return []
-            if tau > 0:
-                arr = np.asarray(p)
-                k5 = max(3, len(arr) // 20)
-                if len(arr) == 0 or np.sort(arr)[-k5:].mean() < tau:
-                    return []
-            return bio_spans(bt, p, t)
-        if decoder == "v2":
-            # soft token-derived gate: p' = p * g_eff^alpha, alpha encoded via g_thr slot
-            import numpy as _np
-            topk = _np.sort(_np.asarray(p))[-max(3, len(p)//20):].mean() if len(p) else 0.0
-            g_eff = 0.5 * g + 0.5 * topk
-            p2 = _np.asarray(p) * (g_eff ** g_thr)
-            return peak_spans(p2, t, rel_hi=tau, rel_lo=0.55 * tau)
-        if decoder in ("gate", "gate_hyst") and g < g_thr:
-            return []
-        if decoder in ("hyst", "gate_hyst"):
-            return hysteresis_spans(p, t, tau, 0.6 * tau)
-        return merge_spans(p, t, tau)                     # simple threshold
+    def decode(p, t, g, tau, g_thr, bt=None, qsp=None, it=None):
+        return decode_spans(decoder, p, t, g, tau, g_thr, bt, qsp,
+                            resp_len=(len(it.response) if it is not None else None))
     if decoder == "crf":
         g_grid = (-0.5, 0.0, 0.5)                    # viterbi bias
     elif decoder in ("set", "seg"):
@@ -462,29 +578,44 @@ def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hys
             ious = []
             for i in ids:
                 it, q, p, t, g, bt, qsp = per[i]
-                ious.append(char_iou(it.labels, decode(p, t, g, tau, g_thr, bt, qsp), len(p)))
+                spans = decode(p, t, g, tau, g_thr, bt, qsp, it)
+                ious.append(official_score_iou(official_gold_record(it),
+                                               official_pred_record(it, spans)))
             m = float(np.mean(ious))
             if m > best["iou"]:
                 best = {"iou": m, "tau": tau, "g_thr": g_thr}
     # diagnostics at the best operating point
-    d_ious, open_ious, clean_ok, n_clean, n_dirty, dirty_open, nspans = [], [], 0, 0, 0, 0, []
-    sub_g, sub_p = [], []
+    d_ious, d_ungated, open_ious, clean_ok = [], [], [], 0
+    n_clean, n_dirty, dirty_open, clean_closed, nspans = 0, 0, 0, 0, []
+    official_gold, official_pred = [], []
     for i in ids:
         it, q, p, t, g, bt, qsp = per[i]
-        spans = decode(p, t, g, best["tau"], best["g_thr"], bt, qsp)
+        spans = decode(p, t, g, best["tau"], best["g_thr"], bt, qsp, it)
         nspans.append(len(spans))
-        gated_out = (decoder in ("gate", "gate_hyst") and g < best["g_thr"])
-        sub = np.zeros(len(p)) if gated_out else p          # submission-time probs
-        sub_g += gold_char_probs(it.labels, len(p)); sub_p += sub.tolist()
+        nulled = decoder_null_decision(decoder, p, g, best["tau"], best["g_thr"], bt, qsp)
+        gold_rec = official_gold_record(it)
+        pred_rec = official_pred_record(it, spans)
+        official_gold.append(gold_rec)
+        official_pred.append(pred_rec)
         if it.labels:
             n_dirty += 1
-            iou_i = char_iou(it.labels, spans, len(p))
+            iou_i = official_score_iou(gold_rec, pred_rec)
             d_ious.append(iou_i)
-            if not gated_out:
+            ungated_spans = decode(p, t, 1.0, best["tau"], 0.0, bt, qsp, it)
+            d_ungated.append(official_score_iou(gold_rec, official_pred_record(it, ungated_spans)))
+            if not nulled:
                 dirty_open += 1; open_ious.append(iou_i)
         else:
             n_clean += 1
+            if nulled:
+                clean_closed += 1
             clean_ok += (0 if spans else 1)
+    official_iou = float(np.mean([official_score_iou(g, p)
+                                  for g, p in zip(official_gold, official_pred)]))
+    official_cor = float(np.mean([official_score_cor(g, p)
+                                  for g, p in zip(official_gold, official_pred)]))
+    official_cor_lbl = float(np.mean([official_score_cor_lbl(g, p)
+                                      for g, p in zip(official_gold, official_pred)]))
     # gold-gate ceiling: a PERFECT clean/dirty decision (clean -> empty, dirty -> the
     # locator's spans, no gating). This is the locator's headroom: if it is below the
     # target score, no gate work can get there — the locator itself must improve.
@@ -494,22 +625,34 @@ def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hys
         if not it.labels:
             gg.append(1.0)
         else:
-            gg.append(char_iou(it.labels, decode(p, t, 1.0, best["tau"], 0.0, bt, qsp), len(p)))
+            spans = decode(p, t, 1.0, best["tau"], 0.0, bt, qsp, it)
+            gg.append(official_score_iou(official_gold_record(it),
+                                         official_pred_record(it, spans)))
     # cleanOK <-> dirty Pareto sweep over the gate threshold at the best tau
     sweep = []
-    for g_thr in (g_grid if decoder == "bio" else ()):
-        io, dio, cok = [], [], 0
+    for g_thr in (g_grid if decoder in ("bio", "gate", "gate_hyst") else ()):
+        io, dio, cok, dopen, cclosed, nd, nc = [], [], 0, 0, 0, 0, 0
         for i in ids:
             it, q, p, t, g, bt, qsp = per[i]
-            spans = decode(p, t, g, best["tau"], g_thr, bt, qsp)
-            io.append(char_iou(it.labels, spans, len(p)))
+            spans = decode(p, t, g, best["tau"], g_thr, bt, qsp, it)
+            nulled = decoder_null_decision(decoder, p, g, best["tau"], g_thr, bt, qsp)
+            score = official_score_iou(official_gold_record(it),
+                                       official_pred_record(it, spans))
+            io.append(score)
             if it.labels:
-                dio.append(io[-1])
+                nd += 1
+                dio.append(score)
+                dopen += (0 if nulled else 1)
             else:
+                nc += 1
+                cclosed += (1 if nulled else 0)
                 cok += (0 if spans else 1)
-        sweep.append(dict(g_thr=g_thr, iou=round(float(np.mean(io)), 4),
-                          dirty=round(float(np.mean(dio)), 4) if dio else 0.0,
-                          cleanOK=round(cok / max(1, n_clean), 3)))
+        sweep.append(dict(threshold=g_thr, g_thr=g_thr,
+                          gate_recall=round(dopen / max(1, nd), 3),
+                          specificity=round(cclosed / max(1, nc), 3),
+                          dirty_iou=round(float(np.mean(dio)), 4) if dio else 0.0,
+                          cleanOK=round(cok / max(1, nc), 3),
+                          overall_iou=round(float(np.mean(io)), 4)))
     # gate quality as a standalone expert: AUC + recall/specificity operating points
     g_all = np.array([float(per[i][4]) for i in ids])
     y_all = np.array([1.0 if per[i][0].labels else 0.0 for i in ids])
@@ -525,17 +668,23 @@ def run_eval(model, dl, device, no_image=False, shuffle=False, decoder="gate_hys
             dirty_recall=round(float(pred[y_all > 0].mean()), 3) if (y_all > 0).any() else 0.0,
             clean_spec=round(float((~pred[y_all == 0]).mean()), 3) if (y_all == 0).any() else 0.0))
     from shroom.metrics import spearman as _sp
-    return per, dict(span_iou=best["iou"], tau=best["tau"], g_thr=best["g_thr"], floor=floor,
+    return per, dict(span_iou=official_iou, official_iou=official_iou,
+                     official_cor=official_cor, official_cor_lbl=official_cor_lbl,
+                     tau=best["tau"], g_thr=best["g_thr"], floor=floor,
                      gate_auc=gate_auc, gate_ops=gate_ops,
                      dirty_iou=float(np.mean(d_ious)) if d_ious else 0.0,
+                     dirty_iou_ungated=float(np.mean(d_ungated)) if d_ungated else 0.0,
                      clean_empty=(clean_ok / n_clean) if n_clean else 1.0,
                      dirty_gate_recall=(dirty_open / n_dirty) if n_dirty else 0.0,
+                     gate_specificity=(clean_closed / n_clean) if n_clean else 1.0,
                      iou_gate_open=float(np.mean(open_ious)) if open_ious else 0.0,
                      avg_spans=float(np.mean(nspans)),
                      gold_gate_iou=float(np.mean(gg)),
                      gate_sweep=sweep,
-                     roc_auc=roc, pr_auc=pr, cor_raw=cal, cor_spearman=float(_sp(ga, pa)),
-                     cor_submission=float(pearson(sub_g, sub_p)), cor_lbl=cal_lbl)
+                     roc_auc=roc, pr_auc=pr,
+                     pooled_pearson_debug=cal, pooled_spearman_debug=float(_sp(ga, pa)),
+                     pooled_cor_lbl_debug=cal_lbl,
+                     cor_submission=official_cor, cor_lbl=official_cor_lbl)
 
 
 # --------------------------------------------------------------------------- main
@@ -705,6 +854,7 @@ def main():
     tag = f"{args.arch}{'_noimg' if args.no_image else ''}{'_shufv' if args.shuffle_v else ''}{'_donly' if args.dirty_only else ''}{'_xgate' if args.gate_from else ''}{'_gateonly' if args.gate_only else ''}_{args.decoder}{'_tv' if args.tversky else ''}{'_bio' if args.bio else ''}{'_gc' if args.gate_consistency else ''}{'_ctr' if args.contrastive else ''}{'_set' if args.head=='set' else ''}{'_seg' if args.head=='seg' else ''}{'_crf' if args.head=='crf' else ''}{'_notype' if args.no_type_loss else ''}{'_nogru' if args.no_gru else ''}_s{args.seed}"
     t0 = time.time()
     best_iou_seen = (-1.0, 0)
+    best_path = None
     for ep in range(1, 0 if args.eval_only else args.epochs + 1):
         model.train(); tot = nb = 0
         for H, V, vmask, t2c, inpos, y, ytype, bio_t, seg_l, valid, gate, bitems in tr_dl:
@@ -835,17 +985,27 @@ def main():
             if crf is not None: st_b["crf"] = crf.state_dict()
             if setdec is not None: st_b["setdec"] = setdec.state_dict()
             if segsc is not None: st_b["segsc"] = segsc.state_dict()
-            torch.save(st_b, os.path.join(args.out_dir, f"best_iou_{tag}.pt"))
+            best_path = os.path.join(args.out_dir, f"best_iou_{tag}.pt")
+            torch.save(st_b, best_path)
         alpha_s = (f" alpha={float(model.alpha):+.5f}"
                    if args.arch == "connector" else "")
-        print(f"[ep {ep}] loss={tot/nb:.4f} dev: iou={m['span_iou']:.4f} (fl={m['floor']:.3f}, "
+        print(f"[ep {ep}] loss={tot/nb:.4f} dev: iou={m['official_iou']:.4f} (fl={m['floor']:.3f}, "
               f"tau={m['tau']}, g={m['g_thr']}) dirty={m['dirty_iou']:.3f} cleanOK={m['clean_empty']:.2f} "
-              f"gateRec={m['dirty_gate_recall']:.2f} corR={m['cor_raw']:.3f} corS={m['cor_submission']:.3f} "
+              f"gateRec={m['dirty_gate_recall']:.2f} gateSpec={m['gate_specificity']:.2f} "
+              f"Cor={m['official_cor']:.3f} Cor_lbl={m['official_cor_lbl']:.3f} "
+              f"poolR={m['pooled_pearson_debug']:.3f} "
               f"gAUC={m['gate_auc']:.3f}"
               f"{alpha_s} [{(time.time()-t0)/60:.1f}m]", flush=True)
 
+    if best_path:
+        ck = torch.load(best_path, map_location=device)
+        model.load_state_dict(ck["model"], strict=False)
+        if crf is not None and "crf" in ck: crf.load_state_dict(ck["crf"])
+        if setdec is not None and "setdec" in ck: setdec.load_state_dict(ck["setdec"])
+        if segsc is not None and "segsc" in ck: segsc.load_state_dict(ck["segsc"])
+        print(f"[best] loaded epoch {ck.get('epoch')} from {best_path} for final predictions", flush=True)
     per, m = run_eval(model, dv_dl, device, no_image=args.no_image, decoder=args.decoder, setdec=setdec, segsc=segsc, crf=crf, gate_model=gate_model)
-    results = {"variant": tag, "metrics": m}
+    results = {"variant": tag, "metrics": m, "best_checkpoint": best_path}
     if args.eval_shuffle and not args.no_image:
         _, ms = run_eval(model, dv_dl, device, shuffle=True, decoder=args.decoder)
         results["metrics_shuffled_image"] = ms
@@ -854,31 +1014,8 @@ def main():
     pred_path = os.path.join(args.out_dir, f"dev_pred_{tag}.jsonl")
     with open(pred_path, "w", encoding="utf-8") as f:
         for i, (it, q, p, t, g, bt, qsp) in per.items():
-            if args.decoder == "crf":
-                spans = ([] if (not qsp or qsp["p_empty"] > m["tau"])
-                         else qsp["by_bias"].get(m["g_thr"], []))
-            elif args.decoder == "seg":
-                cands3 = [(a, b2, ti) for _, a, b2, ti in (qsp or [])]
-                scores3 = [c[0] for c in (qsp or [])]
-                sel = dp_select(cands3, scores3, m["tau"]) if cands3 else []
-                spans = sorted(({"start": cands3[i5][0], "end": cands3[i5][1],
-                                 "prob": scores3[i5], "label": CATS[cands3[i5][2]]}
-                                for i5 in sel), key=lambda sp: sp["start"])
-            elif args.decoder == "set":
-                spans = []
-                for conf, a, b2, ti in sorted(qsp or [], key=lambda c: -c[0]):
-                    if conf < m["tau"]:
-                        break
-                    if any(not (b2 <= sp["start"] or a >= sp["end"]) for sp in spans):
-                        continue
-                    spans.append({"start": a, "end": b2, "prob": conf, "label": CATS[ti]})
-                spans = sorted(spans, key=lambda sp: sp["start"])
-            elif args.decoder == "bio":
-                spans = bio_spans(bt, p, t) if (m["g_thr"] == 0 or g >= m["g_thr"]) else []
-            elif args.decoder == "v2":
-                spans = peak_spans(p, t, rel_hi=m["tau"], rel_lo=0.55 * m["tau"])
-            else:
-                spans = [] if g < m["g_thr"] else hysteresis_spans(p, t, m["tau"], 0.6 * m["tau"])
+            spans = decode_spans(args.decoder, p, t, g, m["tau"], m["g_thr"],
+                                 bt, qsp, resp_len=len(it.response))
             f.write(json.dumps({"id": i, "labels": spans,          # official field
                                 "language": it.language, "response": it.response,
                                 "pred_labels": spans,

@@ -1,7 +1,47 @@
-import pandas as pd
-from scipy.stats import spearmanr
+import json
+
 import numpy as np
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support
+try:
+    from scipy.stats import spearmanr
+except Exception:  # pragma: no cover - fallback for lean cluster environments
+    def _rankdata(a):
+        a = np.asarray(a, dtype=float)
+        sorter = np.argsort(a, kind="mergesort")
+        inv = np.empty(len(a), dtype=int)
+        inv[sorter] = np.arange(len(a))
+        a_sorted = a[sorter]
+        obs = np.r_[True, a_sorted[1:] != a_sorted[:-1]]
+        dense = obs.cumsum()[inv]
+        count = np.r_[np.flatnonzero(obs), len(a)]
+        return 0.5 * (count[dense] + count[dense - 1] + 1)
+
+    class _SpearmanResult:
+        def __init__(self, correlation):
+            self.correlation = correlation
+
+    def spearmanr(x, y):
+        rx, ry = _rankdata(x), _rankdata(y)
+        if rx.size < 2 or rx.std() == 0 or ry.std() == 0:
+            return _SpearmanResult(0.0)
+        return _SpearmanResult(float(np.corrcoef(rx, ry)[0, 1]))
+try:
+    from sklearn.metrics import accuracy_score, precision_recall_fscore_support
+except Exception:  # pragma: no cover - fallback for inference-only environments
+    def accuracy_score(refs, preds):
+        refs = list(refs)
+        preds = list(preds)
+        return sum(r == p for r, p in zip(refs, preds)) / max(1, len(refs))
+
+    def precision_recall_fscore_support(refs, preds, average="binary", zero_division=0,
+                                        pos_label=True):
+        tp = sum(r == pos_label and p == pos_label for r, p in zip(refs, preds))
+        fp = sum(r != pos_label and p == pos_label for r, p in zip(refs, preds))
+        fn = sum(r == pos_label and p != pos_label for r, p in zip(refs, preds))
+        precision = tp / (tp + fp) if tp + fp else zero_division
+        recall = tp / (tp + fn) if tp + fn else zero_division
+        f1 = (2 * precision * recall / (precision + recall)
+              if precision + recall else zero_division)
+        return precision, recall, f1, None
 import argparse as ap
 from collections import Counter
 
@@ -18,23 +58,27 @@ def __check_one(label):
     return True
 
 def load_jsonl_file_to_records(filename, is_ref=True, do_check=True):
-    """read data from a JSONL file and format that as a `pandas.DataFrame`.
+    """read data from a JSONL file and format that as scorer records.
     Performs minor format checks (ensures that some labels are present,
     optionally compute missing labels on the fly)."""
-    df = pd.read_json(filename, lines=True)
-    if not is_ref:
-        assert ('labels' in df.columns) , \
-            f'File {filename} contains no predicted label!'
-    # adding an extra column for convenience
-    columns = ['id', 'labels']
-    if is_ref:
-        df['text_len'] = df.response.apply(len)
-        columns += ['text_len', 'raw_annots']
-    df = df[columns]
-    if do_check:
-        assert df.labels.apply(lambda list_: all(map(__check_one, list_))).all(), \
-            f'Some labels in {filename} are malformed!'
-    return df.sort_values('id').to_dict(orient='records')
+    records = []
+    with open(filename, encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            row = json.loads(line)
+            if not is_ref:
+                assert 'labels' in row, f'File {filename} contains no predicted label!'
+            labels = row.get('labels') or []
+            if do_check:
+                assert all(map(__check_one, labels)), f'Some labels in {filename} are malformed!'
+            rec = {'id': row['id'], 'labels': labels}
+            if is_ref:
+                rec['text_len'] = len(row.get('response', ''))
+                rec['raw_annots'] = row.get('raw_annots', {})
+            records.append(rec)
+    return sorted(records, key=lambda rec: rec['id'])
 
 
 def score_cor(ref_dict, pred_dict, label_filtered_=None):
@@ -167,4 +211,3 @@ if __name__ == '__main__':
     p.add_argument('output_file', type=str)
     a = p.parse_args()
     _ = main(a.ref_file, a.pred_file, a.output_file, verbose=True)
-

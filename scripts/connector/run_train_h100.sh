@@ -129,7 +129,8 @@ for f in sorted(glob.glob("results/v3_h100/summary_*.json")):
 print(f"{'variant':46}{'iou':>7}{'dirty':>7}{'clnOK':>6}{'gateR':>6}{'corR':>7}{'corS':>7}{'corLbl':>7}")
 for v, m in rows:
     print(f"{v:46}{m['span_iou']:>7.4f}{m['dirty_iou']:>7.3f}{m['clean_empty']:>6.2f}"
-          f"{m['dirty_gate_recall']:>6.2f}{m['cor_raw']:>7.3f}{m['cor_submission']:>7.3f}{m['cor_lbl']:>7.3f}")
+          f"{m['dirty_gate_recall']:>6.2f}{m['pooled_pearson_debug']:>7.3f}"
+          f"{m['official_cor']:>7.3f}{m['official_cor_lbl']:>7.3f}")
 print("\nreference points on tune-202: floor 0.213 | starter baseline 0.200 | zero-shot HYBRID "
       "0.273 | Mac 4-bit v1 0.304 | Mac 4-bit BIO 0.320  (see results/COMPARISON.md)")
 PY

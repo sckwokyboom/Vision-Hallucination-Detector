@@ -22,7 +22,7 @@ sys.path.insert(0, _ROOT)
 sys.path.insert(0, os.path.join(_ROOT, "scripts", "connector"))
 
 from lora import (LoRALinear, inject_lora, lora_parameters,  # noqa: E402
-                  lora_state_dict, load_lora_state)
+                  lora_state_dict, load_lora_state, set_lora_training)
 from model import Connector  # noqa: E402
 import train_lora as tl  # noqa: E402
 
@@ -114,6 +114,23 @@ def test_state_dict_roundtrip():
     assert torch.allclose(q1(x), q2(x), atol=1e-6)
 
 
+def test_set_lora_training_makes_eval_outputs_deterministic():
+    base = nn.Linear(8, 8)
+    wrapped = LoRALinear(base, r=4, dropout=0.9)
+    with torch.no_grad():
+        wrapped.B.normal_()
+    model = nn.Sequential(wrapped)
+    x = torch.randn(4, 8)
+
+    set_lora_training(model, True)
+    assert wrapped.drop.training
+    set_lora_training(model, False)
+    assert not wrapped.drop.training
+    ys = [model(x) for _ in range(3)]
+    assert torch.equal(ys[0], ys[1])
+    assert torch.equal(ys[1], ys[2])
+
+
 # ------------------------------------------------------------------- live mechanics
 class FakeItem:
     def __init__(self):
@@ -132,6 +149,81 @@ def fake_live_example(T=6, P=3, L=4, D=16, requires_grad=True):
     tok_char = [(i * step, min(n, (i + 1) * step)) for i in range(T)]
     ex = tl.build_example(it, V, H, tok_char, n, max_chars=4000)
     return it, ex
+
+
+class EvalItem:
+    def __init__(self, i, dirty):
+        self.id = f"train-en-{i}"
+        self.language = "en"
+        self.image_name = f"img{i}.jpg"
+        self.prompt = "Q?"
+        self.response = "abcd efgh ijkl"
+        self.labels = ([{"start": 0, "end": 4, "prob": 1.0, "label": "invention"}]
+                       if dirty else [])
+
+
+class DropoutFeatureModel(nn.Module):
+    def __init__(self, d=8):
+        super().__init__()
+        self.adapter = LoRALinear(nn.Linear(d, d), r=2, dropout=0.85)
+        with torch.no_grad():
+            self.adapter.B.normal_()
+
+    def forward(self, x):
+        return self.adapter(x)
+
+
+class FakeEvalBackbone:
+    def __init__(self, T=7, L=2, D=8):
+        self.model = DropoutFeatureModel(D)
+        self.x = torch.randn(T, L, D)
+        step = 2
+        self.tok_char = [(i * step, min(len(EvalItem(0, True).response), (i + 1) * step))
+                         for i in range(T)]
+
+    def prepare(self, it, image_dir):
+        return {"tok_char": self.tok_char, "answer_len": len(it.response)}
+
+    def features(self, prep, grad=True):
+        ctx = torch.enable_grad() if grad else torch.no_grad()
+        with ctx:
+            H = self.model(self.x)
+        return H, H[:0]
+
+
+def test_lora_eval_epoch_is_deterministic_from_checkpoint(tmp_path):
+    torch.manual_seed(0)
+    bb = FakeEvalBackbone()
+    dec = Connector(8, 2, dim=8, blocks=1, arch="linear")
+    ck_path = tmp_path / "best.pt"
+    torch.save({"model": dec.state_dict(), "lora": lora_state_dict(bb.model)}, ck_path)
+    ck = torch.load(ck_path, map_location="cpu")
+    dec.load_state_dict(ck["model"])
+    load_lora_state(bb.model, ck["lora"])
+
+    items = [EvalItem(1, True), EvalItem(2, False)]
+    set_lora_training(bb.model, True)
+    dec.train()
+    runs = []
+    for _ in range(3):
+        per, metrics = tl.eval_epoch(bb, dec, items, "", "cpu", max_chars=100, batch=2)
+        decoded = {}
+        logits = {}
+        for i, (it, q, p, t, g, bt, qsp) in per.items():
+            decoded[i] = tl.decode_spans("bio", p, t, g, metrics["tau"], metrics["g_thr"],
+                                         bt, qsp, resp_len=len(it.response))
+            logits[i] = (q.copy(), p.copy(), t.copy(), g, bt.copy())
+        runs.append((logits, decoded, metrics))
+
+    for lhs, rhs in zip(runs, runs[1:]):
+        for key in lhs[0]:
+            assert np.array_equal(lhs[0][key][0], rhs[0][key][0])
+            assert np.array_equal(lhs[0][key][1], rhs[0][key][1])
+            assert np.array_equal(lhs[0][key][2], rhs[0][key][2])
+            assert lhs[0][key][3] == rhs[0][key][3]
+            assert np.array_equal(lhs[0][key][4], rhs[0][key][4])
+        assert lhs[1] == rhs[1]
+        assert lhs[2] == rhs[2]
 
 
 def test_single_batch_keeps_graph():
