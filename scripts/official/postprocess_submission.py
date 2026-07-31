@@ -79,8 +79,29 @@ def should_trim(ch, trim_symbols):
     return trim_symbols and category.startswith("S")
 
 
+def snap_span(start, end, text, mode):
+    """Align span boundaries to word edges. Gold spans are word-aligned (4% mid-word
+    boundaries) while raw BIO output is not (41%) — each misaligned edge trades IoU.
+    expand: grow to cover every partially-touched word; contract: shrink to whole
+    words inside the span (dropping partial edge words)."""
+    if mode == "off" or text is None:
+        return start, end
+    n = len(text)
+    if mode == "expand":
+        while start > 0 and text[start - 1].isalnum() and text[start].isalnum():
+            start -= 1
+        while end < n and end > 0 and text[end - 1].isalnum() and text[end].isalnum():
+            end += 1
+    elif mode == "contract":
+        while start < end and start > 0 and text[start - 1].isalnum() and text[start].isalnum():
+            start += 1
+        while end > start and end < n and text[end - 1].isalnum() and text[end].isalnum():
+            end -= 1
+    return start, end
+
+
 def clean_one_span(span, text, *, trim_edges, trim_symbols, min_len, min_prob,
-                   label_policy, default_label):
+                   label_policy, default_label, snap="off"):
     try:
         start = int(span.get("start", 0))
         end = int(span.get("end", 0))
@@ -91,6 +112,9 @@ def clean_one_span(span, text, *, trim_edges, trim_symbols, min_len, min_prob,
         n = len(text)
         start = max(0, min(start, n))
         end = max(0, min(end, n))
+    if start >= end:
+        return None
+    start, end = snap_span(start, end, text, snap)
     if start >= end:
         return None
 
@@ -134,7 +158,7 @@ def merge_spans(spans, merge_gap):
 
 
 def postprocess_rows(rows, texts, *, trim_edges, trim_symbols, min_len, min_prob,
-                     label_policy, default_label, merge_gap, keep_ids=None):
+                     label_policy, default_label, merge_gap, keep_ids=None, snap="off"):
     out = []
     for row in rows:
         item_id = row["id"]
@@ -153,6 +177,7 @@ def postprocess_rows(rows, texts, *, trim_edges, trim_symbols, min_len, min_prob
                 min_prob=min_prob,
                 label_policy=label_policy,
                 default_label=default_label,
+                snap=snap,
             )
             if cleaned:
                 spans.append(cleaned)
@@ -247,7 +272,9 @@ def run_sweep(args, pred_rows, texts):
         raise SystemExit("--sweep requires --gold")
     keep_ids = load_eval_ids(args.eval_ids)
     candidates = []
-    for min_len in parse_int_grid(args.min_len_grid):
+    snap_grid = [x.strip() for x in args.snap_grid.split(",") if x.strip()]
+    for snap in snap_grid:
+      for min_len in parse_int_grid(args.min_len_grid):
         for min_prob in parse_float_grid(args.min_prob_grid):
             for label_policy, default_label in parse_policy_grid(args.label_policy_grid):
                 rows = postprocess_rows(
@@ -261,9 +288,11 @@ def run_sweep(args, pred_rows, texts):
                     default_label=default_label,
                     merge_gap=args.merge_gap,
                     keep_ids=keep_ids,
+                    snap=snap,
                 )
                 metrics = evaluate_rows(args.gold, args.eval_ids, rows)
                 candidates.append({
+                    "snap": snap,
                     "min_len": min_len,
                     "min_prob": min_prob,
                     "label_policy": label_policy,
@@ -277,11 +306,11 @@ def run_sweep(args, pred_rows, texts):
 
     candidates.sort(key=lambda row: (row["IoU"], row["Cor"], row["Cor_lbl"]), reverse=True)
     print("Top postprocess settings by tune IoU:")
-    print(f"{'rank':>4} {'min_len':>7} {'min_prob':>8} {'label':>20} {'IoU':>8} {'Cor':>8} {'Cor_lbl':>8} {'spans':>7} {'nonempty':>8}")
+    print(f"{'rank':>4} {'snap':>9} {'min_len':>7} {'min_prob':>8} {'label':>20} {'IoU':>8} {'Cor':>8} {'Cor_lbl':>8} {'spans':>7} {'nonempty':>8}")
     for rank, row in enumerate(candidates[:args.top], 1):
         label = row["label_policy"] if row["label_policy"] == "keep" else f"constant:{row['default_label']}"
         print(
-            f"{rank:>4} {row['min_len']:>7} {row['min_prob']:>8.2f} {label:>20} "
+            f"{rank:>4} {row.get('snap','off'):>9} {row['min_len']:>7} {row['min_prob']:>8.2f} {label:>20} "
             f"{row['IoU']:>8.4f} {row['Cor']:>8.4f} {row['Cor_lbl']:>8.4f} "
             f"{row['summary']['spans']:>7} {row['summary']['nonempty']:>8}"
         )
@@ -318,6 +347,9 @@ def main():
     parser.add_argument("--trim_symbols", action="store_true", help="Also trim Unicode symbol characters at span edges.")
     parser.add_argument("--min_len", type=int, default=1, help="Minimum span length after trimming.")
     parser.add_argument("--min_prob", type=float, default=0.0, help="Minimum span probability.")
+    parser.add_argument("--snap", choices=["off", "expand", "contract"], default="off",
+                        help="Align span edges to word boundaries (gold is word-aligned: 4%% mid-word edges vs 41%% in raw BIO output).")
+    parser.add_argument("--snap_grid", default="off,expand,contract")
     parser.add_argument("--merge_gap", type=int, default=0, help="Merge same-label spans separated by at most this many chars; -1 disables.")
     parser.add_argument("--label_policy", choices=["keep", "constant"], default="keep")
     parser.add_argument("--default_label", choices=sorted(VALID_LABELS), default=DEFAULT_LABEL)
