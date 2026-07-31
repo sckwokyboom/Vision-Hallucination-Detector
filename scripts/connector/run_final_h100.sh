@@ -4,6 +4,7 @@
 # Typical remote usage:
 #   bash scripts/connector/run_final_h100.sh --gpu 1 --phase a2-backup
 #   bash scripts/connector/run_final_h100.sh --gpu 1 --phase cascade-screen
+#   bash scripts/connector/run_final_h100.sh --gpu 1 --phase a2-backup --test-file /path/test.en.jsonl
 #
 # Other phases:
 #   a2-train-s13        train cold-start A2 seed 13 if the old checkpoint is absent
@@ -21,6 +22,7 @@ DATA_DIR="${DATA_DIR:-../Shroom-Vision}"
 MODEL="${MODEL:-/workspace/data/models/gemma-4-12B-it}"
 LORA_FROM="${LORA_FROM:-24}"
 A2_CK="${A2_CK:-results/lora_h100/a2/best_iou_lora_linear_f24_r16_s13.pt}"
+TEST_FILE="${TEST_FILE:-}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -30,7 +32,8 @@ while [ $# -gt 0 ]; do
     --model) MODEL="$2"; shift 2 ;;
     --lora-from) LORA_FROM="$2"; shift 2 ;;
     --a2-ck) A2_CK="$2"; shift 2 ;;
-    -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
+    --test-file) TEST_FILE="$2"; shift 2 ;;
+    -h|--help) sed -n '2,23p' "$0"; exit 0 ;;
     -*) echo "unknown option: $1" >&2; exit 2 ;;
     *) echo "unexpected positional argument: $1" >&2; exit 2 ;;
   esac
@@ -39,7 +42,7 @@ done
 export CUDA_VISIBLE_DEVICES="$GPU"
 DEVICE=cuda:0
 TRAIN_EN="$DATA_DIR/distrib/shroom-vision.train.en.labeled.jsonl"
-TEST_EN="$DATA_DIR/distrib/shroom-vision.test.en.jsonl"
+TEST_EN="${TEST_FILE:-$DATA_DIR/distrib/shroom-vision.test.en.jsonl}"
 IMG_DIR="$DATA_DIR/images"
 PROTO=splits/en.eval_protocol.json
 FINAL=results/final
@@ -50,6 +53,38 @@ mkdir -p "$FINAL/current_a2" "$FINAL/cascade_lora" "$FINAL/heldout" \
 
 require_file() {
   [ -f "$1" ] || { echo "ERROR: missing required file: $1" >&2; exit 1; }
+}
+
+resolve_test_file() {
+  if [ -f "$TEST_EN" ]; then
+    return 0
+  fi
+  local -a candidates=()
+  if [ -d "$DATA_DIR/distrib" ]; then
+    while IFS= read -r path; do
+      candidates+=("$path")
+    done < <(find "$DATA_DIR/distrib" -maxdepth 1 -type f \
+      \( -name '*test*en*.jsonl' -o -name '*test*.en*.jsonl' \) | sort)
+  fi
+  if [ "${#candidates[@]}" -eq 1 ]; then
+    TEST_EN="${candidates[0]}"
+    echo "[test] using discovered EN test file: $TEST_EN"
+    return 0
+  fi
+  {
+    echo "ERROR: EN test file is missing."
+    echo "       Looked for: $TEST_EN"
+    if [ "${#candidates[@]}" -gt 1 ]; then
+      echo "       Multiple possible test files were found; rerun with --test-file PATH:"
+      printf '         %s\n' "${candidates[@]}"
+    else
+      echo "       Put the official EN test JSONL under DATA_DIR/distrib or rerun with:"
+      echo "         --test-file /absolute/or/relative/path/to/shroom-vision.test.en.jsonl"
+      echo "       Quick remote check:"
+      echo "         find $DATA_DIR -name '*test*en*.jsonl' -o -name '*test*.en*.jsonl'"
+    fi
+  } >&2
+  return 1
 }
 
 setup() {
@@ -178,7 +213,7 @@ phase_a2_backup() {
     --pred "A2=$FINAL/current_a2/tune_predictions.jsonl" \
     2>&1 | tee "$FINAL/current_a2/official_eval.txt"
 
-  require_file "$TEST_EN"
+  resolve_test_file
   python scripts/connector/predict_lora.py \
     --checkpoint "$ck" \
     --model_id "$MODEL" \
