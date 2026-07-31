@@ -112,11 +112,14 @@ class LiveBackbone:
 
 
 # ------------------------------------------------------------------- v3 loss (b=1)
-def v3_loss(outs, tgt, lam=(1.0, 1.0, 0.5, 0.2), l_bio=0.5, l_consist=0.3):
+def v3_loss(outs, tgt, lam=(1.0, 1.0, 0.5, 0.2), l_bio=0.5, l_consist=0.3,
+            gate_terms=True):
     """train_connector's inline v3 loss, restated for live training: BCE on soft gold,
     Tversky, ranking, gate BCE, BIO CE (w=[1,4,2]), gate-consistency (MSE of
     sigmoid(gate) vs per-example top-k mean). No contrastive (needs same-image pairs
-    in one graph), no type loss (v3 runs --no_type_loss)."""
+    in one graph), no type loss (v3 runs --no_type_loss). gate_terms=False drops the
+    gate BCE and consistency — for dirty-only training, where the gate target is a
+    constant 1 (same hygiene as the cached trainer applies automatically)."""
     ql, pl, tl, gl, bl, _ = outs
     y, bio_t, valid, gate = tgt["y"], tgt["bio"], tgt["valid"], tgt["gate"]
     bce = nn.BCEWithLogitsLoss(reduction="none")
@@ -127,18 +130,20 @@ def v3_loss(outs, tgt, lam=(1.0, 1.0, 0.5, 0.2), l_bio=0.5, l_consist=0.3):
     m = (y > 0).float()
     loss = (lam[0] * exmean(bce(pl, y))
             + lam[1] * tversky_loss(ql, m, valid)
-            + lam[2] * ranking_loss(pl, y, valid)
-            + lam[3] * bce(gl, gate).mean())
+            + lam[2] * ranking_loss(pl, y, valid))
+    if gate_terms:
+        loss = loss + lam[3] * bce(gl, gate).mean()
     w = torch.tensor([1.0, 4.0, 2.0], device=bl.device)
     ce = nn.functional.cross_entropy(bl.reshape(-1, 3), bio_t.reshape(-1),
                                      weight=w, reduction="none").reshape(bio_t.shape)
     loss = loss + l_bio * exmean(ce)
-    p_sig = torch.sigmoid(pl) * valid
-    topk = torch.stack([
-        (p_sig[bi][valid[bi] > 0].topk(max(3, int(valid[bi].sum()) // 20))[0].mean()
-         if int(valid[bi].sum()) >= 3 else p_sig[bi].max())
-        for bi in range(p_sig.shape[0])])
-    loss = loss + l_consist * nn.functional.mse_loss(torch.sigmoid(gl), topk)
+    if gate_terms:
+        p_sig = torch.sigmoid(pl) * valid
+        topk = torch.stack([
+            (p_sig[bi][valid[bi] > 0].topk(max(3, int(valid[bi].sum()) // 20))[0].mean()
+             if int(valid[bi].sum()) >= 3 else p_sig[bi].max())
+            for bi in range(p_sig.shape[0])])
+        loss = loss + l_consist * nn.functional.mse_loss(torch.sigmoid(gl), topk)
     return loss
 
 
@@ -218,6 +223,9 @@ def main():
     ap.add_argument("--max_chars", type=int, default=4000)
     ap.add_argument("--device", default="cuda:0")
     ap.add_argument("--init_from", default=None, help="warm-start decoder from a checkpoint")
+    ap.add_argument("--dirty_only", action="store_true",
+                    help="V4 cascade locator on the LoRA backbone: train only on answers "
+                         "WITH hallucinations; gate terms dropped from the loss")
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
@@ -231,6 +239,10 @@ def main():
     items = load_jsonl(args.train_file)
     ev = [it for it in items if it.id in tune_ids]
     tr = [it for it in items if it.id not in tune_ids and it.id not in held]
+    if args.dirty_only:
+        n0 = len(tr)
+        tr = [it for it in tr if it.labels]
+        print(f"[data] dirty-only locator: train {n0} -> {len(tr)}", flush=True)
     if args.max_train:
         tr = tr[:args.max_train]
     if args.max_eval:
@@ -267,6 +279,7 @@ def main():
 
     frozen_run = args.freeze_lora_epochs >= args.epochs      # continuation control: no LoRA ever
     tag = (f"lora_{args.arch}{'_frozen' if frozen_run else ''}"
+           f"{'_donly' if args.dirty_only else ''}"
            f"_f{args.lora_from}_r{args.lora_r}_s{args.seed}")
     best_iou, t0 = -1.0, time.time()
     rng = np.random.default_rng(args.seed)
@@ -297,7 +310,7 @@ def main():
                                max_chars=args.max_chars)
             Hb, Vb, vmask, t2c, inpos, tgt = single_batch(ex, args.device)
             outs = dec(Hb, Vb, t2c, inpos, vmask)
-            loss = v3_loss(outs, tgt) / args.accum
+            loss = v3_loss(outs, tgt, gate_terms=not args.dirty_only) / args.accum
             loss.backward()
             run_loss += float(loss.detach()) * args.accum
             seen += 1
