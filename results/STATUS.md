@@ -66,3 +66,21 @@ Updated: 2026-07-30. Held-out-157 untouched. All numbers seed 13 unless noted.
   a2_frozen confirms the effect.
 - Cor is healthy (0.44 vs 0.213 floor) but Cor_lbl is below floor — the type head
   must be trained (two-stage) before any submission.
+
+## Final submissions (v2, retyped) — 2026-08-01
+
+Trial leaderboard v1 (constant labels): en 0.1993 / fr 0.2360 / it 0.2480 / zh 0.3072 Cor_lbl.
+v2 adds the standalone span-type classifier (balanced acc 0.70-0.74 per language,
+trained on gold-span features from the frozen cache). Spans and probs are
+byte-identical to v1's pipeline (label-only change; IoU/Cor unchanged by construction).
+
+Dev (official scorer): Cor_lbl en 0.2353 -> 0.3348, fr 0.3534, it 0.3595, zh 0.4180 —
+first time all four languages are above their floors on the label metric.
+
+Files: submission_{en,fr,it,zh}.retyped.jsonl — format-checked with references,
+sha256 88558a49 / 4c7c426e / eefad766 / 0ba71b9b.
+
+Negative results banked this cycle: char-prob and span-level ensembles (both lose
+to the single best system), word-boundary snapping (IoU-neutral), frozen visual
+memory (twice), multilingual data on frozen features. Untested queue: multilingual
+LoRA (running), generative-surprise features (implemented, not yet screened).
