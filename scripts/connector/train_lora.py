@@ -268,6 +268,16 @@ def main():
     items = load_jsonl(args.train_file)
     ev = [it for it in items if it.id in tune_ids]
     tr = [it for it in items if it.id not in tune_ids and it.id not in held]
+    # Hard image-disjointness (same invariant as the cached trainer): NOTHING sharing
+    # an image with a protocol eval item may be trained on. Filtering by ids alone
+    # leaks under a multilingual concat — 121/142 en-eval images also appear in the
+    # fr train set (108 it, 106 zh) as translated siblings.
+    eval_imgs = {it.image_name for it in items if it.id in (tune_ids | held)}
+    n0 = len(tr)
+    tr = [it for it in tr if it.image_name not in eval_imgs]
+    if len(tr) != n0:
+        print(f"[data] image-disjointness: dropped {n0 - len(tr)} train items "
+              f"sharing images with protocol eval", flush=True)
     if args.max_train:
         tr = tr[:args.max_train]
     if args.max_eval:
