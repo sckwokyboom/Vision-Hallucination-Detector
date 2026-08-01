@@ -57,8 +57,9 @@ def _infer_one(bb, dec, item, image_dir, device, max_chars, decoder, tau, gate_t
     t = torch.sigmoid(tl)[0, :n].cpu().numpy()
     g = float(torch.sigmoid(gl)[0].cpu())
     bt = bl.argmax(-1)[0, :n].cpu().numpy()
-    return decode_spans(decoder, p, t, g, tau, gate_threshold, bt, None,
-                        resp_len=len(item.response))
+    spans = decode_spans(decoder, p, t, g, tau, gate_threshold, bt, None,
+                         resp_len=len(item.response))
+    return spans, p
 
 
 def main():
@@ -126,9 +127,13 @@ def main():
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
     with torch.no_grad(), open(args.output, "w", encoding="utf-8") as f:
         for item in items:
-            spans = _infer_one(bb, dec, item, args.image_dir, device, max_chars,
-                               decoder, float(tau), float(gate_threshold))
-            f.write(json.dumps({"id": item.id, "labels": spans}, ensure_ascii=False) + "\n")
+            out = _infer_one(bb, dec, item, args.image_dir, device, max_chars,
+                             decoder, float(tau), float(gate_threshold))
+            spans, probs = out if isinstance(out, tuple) else (out, [])
+            # char_probs power downstream ensembling; harmless extra field otherwise
+            f.write(json.dumps({"id": item.id, "labels": spans,
+                                "char_probs": [round(float(x), 3) for x in probs]},
+                               ensure_ascii=False) + "\n")
 
     print(f"wrote {len(items)} predictions -> {args.output}")
 
