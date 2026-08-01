@@ -160,11 +160,20 @@ def build_example(it, V, H, tc, answer_len, max_chars=4000, max_vis=1200):
 
 
 class CacheDS(Dataset):
-    def __init__(self, items, cache_dir, max_chars=1200, max_vis=1200, shuffle_v=False):
+    def __init__(self, items, cache_dir, max_chars=1200, max_vis=1200, shuffle_v=False,
+                 lp_dirs=None):
         self.items = [it for it in items
                       if os.path.exists(os.path.join(cache_dir, f"{it.id}.npz"))]
         self.dir = cache_dir
         self.max_chars, self.max_vis = max_chars, max_vis
+        # Generative-surprise features (extract_genfeats.py): per-review-token stats
+        # [logp, entropy, top1, margin] from one or more runs (with/without image).
+        # They are appended along the FEATURE axis of H (broadcast over layers), so
+        # the rest of the pipeline — collate, model, eval — needs no change at all;
+        # the trainer reads D from the cache and simply sees a wider vector. When two
+        # dirs are given (image, no_image), the logp DELTA (visual grounding per
+        # token) is appended as an extra channel.
+        self.lp_dirs = lp_dirs or []
         # shuffle_v: train-time grounding control. Every item gets the V of a DIFFERENT
         # image (deterministic derangement), so a connector trained this way has the same
         # capacity as the real one but no usable visual information. Distinct from
@@ -190,6 +199,25 @@ class CacheDS(Dataset):
         except Exception:              # partial/corrupt cache file -> fall back to a neighbour
             return self.__getitem__((i + 1) % len(self.items))
         V, H, tc = z["V"], z["H"], z["tok_char"]
+        if self.lp_dirs:
+            T = H.shape[0]
+            feats = []
+            for d in self.lp_dirs:
+                try:
+                    F = np.load(os.path.join(d, f"{it.id}.npz"))["F"].astype(np.float32)
+                except Exception:
+                    F = np.zeros((T, 4), dtype=np.float32)
+                if F.shape[0] < T:                      # defensive row alignment
+                    F = np.pad(F, ((0, T - F.shape[0]), (0, 0)))
+                F = F[:T]
+                # fixed standardization: logp/top1/margin ~ [-15,0], entropy ~ [0,12]
+                F = F / np.array([5.0, 3.0, 5.0, 5.0], dtype=np.float32)
+                feats.append(F)
+            if len(feats) == 2:                          # (image, no_image) -> grounding delta
+                feats.append((feats[0][:, :1] - feats[1][:, :1]))
+            E = np.concatenate(feats, axis=1)            # [T, k]
+            H = np.concatenate([H, np.repeat(E[:, None, :], H.shape[1], axis=1)
+                                .astype(H.dtype)], axis=2)
         if self.vmap is not None:
             other = self.items[self.vmap[i]]
             try:
@@ -705,6 +733,8 @@ def main():
                     help="V4 gate expert: train ONLY the clean/dirty decision — focal "
                          "loss, class-balanced sampling, best checkpoint by gate AUC")
     ap.add_argument("--focal_gamma", type=float, default=2.0)
+    ap.add_argument("--lp_dir", action="append", default=None,
+                    help="dir of extract_genfeats.py features; repeat for the no-image run — two dirs add the visual-grounding logp delta channel")
     ap.add_argument("--shuffle_v", action="store_true",
                     help="train-time control: every item gets the V of a different image "
                          "(same capacity, no visual signal); connector arch only")
@@ -795,8 +825,10 @@ def main():
         print(f"[data] dirty-only locator: train {n0} -> {len(tr)} (dev untouched)", flush=True)
     if args.max_train:
         tr = tr[:args.max_train]
-    tr_ds = CacheDS(tr, args.cache_dir, max_chars=args.max_chars, shuffle_v=args.shuffle_v)
-    dv_ds = CacheDS(dv, args.cache_dir, max_chars=args.max_chars, shuffle_v=args.shuffle_v)
+    tr_ds = CacheDS(tr, args.cache_dir, max_chars=args.max_chars, shuffle_v=args.shuffle_v,
+                    lp_dirs=args.lp_dir)
+    dv_ds = CacheDS(dv, args.cache_dir, max_chars=args.max_chars, shuffle_v=args.shuffle_v,
+                    lp_dirs=args.lp_dir)
     manifest = {"train_ids": [it.id for it in tr_ds.items], "dev_ids": [it.id for it in dv_ds.items],
                 "seed": args.seed, "decoder": args.decoder, "gru": not args.no_gru}
     os.makedirs(args.out_dir, exist_ok=True)
