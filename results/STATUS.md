@@ -84,3 +84,10 @@ Negative results banked this cycle: char-prob and span-level ensembles (both los
 to the single best system), word-boundary snapping (IoU-neutral), frozen visual
 memory (twice), multilingual data on frozen features. Untested queue: multilingual
 LoRA (running), generative-surprise features (implemented, not yet screened).
+
+## Leaderboard v2 confirmed — 2026-08-01
+
+Cor_lbl: en 0.1993 -> 0.3129, fr 0.2360 -> 0.3181, it 0.2480 -> 0.3373,
+zh 0.3072 -> 0.3759 (all inside the dev-predicted bands; mean gain +0.089).
+Cor also up slightly on every language (different span merging in the keep
+pipeline). Fourth consecutive accurate dev->test transfer prediction.
