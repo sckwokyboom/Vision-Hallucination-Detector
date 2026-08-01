@@ -6,15 +6,16 @@ A/B matrices, and full testability on CPU with a toy module tree.
 
 Layer targeting matters here more than usual: the decoder reads hidden states tapped
 at layers {24, 32, 40, 47}, so LoRA restricted to layers 40+ leaves the 24/32 taps
-frozen by construction. The default (from=24) adapts everything the decoder sees;
-pass --lora_from 40 for the top-8-only configuration.
+frozen by construction. The default (from=24) adapts everything the decoder sees
+(+ FFN gate/up/down); pass --lora_from 40 for the top-8-only configuration.
 """
 import re
 
 import torch
 import torch.nn as nn
 
-TARGETS = re.compile(r"layers\.(\d+)\.self_attn\.(q|k|v|o)_proj$")
+TARGETS = re.compile(
+    r"layers\.(\d+)\.(?:self_attn\.(q|k|v|o)_proj|mlp\.(gate|up|down)_proj)$")
 
 
 class LoRALinear(nn.Module):
@@ -45,7 +46,7 @@ class LoRALinear(nn.Module):
 
 
 def inject_lora(model, from_layer=24, to_layer=10 ** 9, r=16, alpha=32, dropout=0.05):
-    """Wrap every q/k/v/o projection of self_attn in layers [from_layer, to_layer].
+    """Wrap Q/K/V/O + FFN(gate/up/down) projections in layers [from_layer, to_layer].
     Matches by module path, so it works for any prefix (language_model.layers.N...).
     Returns the wrapped module names."""
     wrapped = []
@@ -60,7 +61,7 @@ def inject_lora(model, from_layer=24, to_layer=10 ** 9, r=16, alpha=32, dropout=
                 LoRALinear(mod, r=r, alpha=alpha, dropout=dropout))
         wrapped.append(name)
     if not wrapped:
-        raise ValueError(f"no layers.N.self_attn.[qkvo]_proj found in [{from_layer}, {to_layer}]")
+        raise ValueError(f"no LoRA targets found in layers [{from_layer},{to_layer}] — is the model Gemma-4?")
     return wrapped
 
 
