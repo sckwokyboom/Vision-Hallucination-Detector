@@ -2,7 +2,9 @@
 # Camera-ready ablations on ONE GPU (reviewer requests): single-copy control,
 # eval-time image controls (shuffled / no-image), raw dumps for the offline sweeps.
 #
-#   bash scripts/connector/run_ablation_h100.sh --phase single-copy-train [--gpu 0]
+#   bash scripts/connector/run_ablation_h100.sh --phase single-copy-train [--gpu 0] [--seed 42]
+#   bash scripts/connector/run_ablation_h100.sh --phase echo-train --seed 42         # 2nd seed of the final en recipe
+#   bash scripts/connector/run_ablation_h100.sh --phase eval-echo-en --seed 42       # its tune/held-out scores
 #   bash scripts/connector/run_ablation_h100.sh --phase eval-final-en --ck results/lora_h100/a2/best_iou_lora_linear_f24_r16_s13.pt
 #   bash scripts/connector/run_ablation_h100.sh --phase eval-single-en
 #   bash scripts/connector/run_ablation_h100.sh --phase eval-lang --lang zh --ck <zh ckpt> --tau 0.0 --g 0.7
@@ -24,6 +26,7 @@ TAU="${TAU:-}"
 GTHR="${GTHR:-}"
 SPLIT_ARG=""
 LIMIT="${LIMIT:-}"
+SEED="${SEED:-13}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -36,6 +39,7 @@ while [ $# -gt 0 ]; do
     --tau) TAU="$2"; shift 2 ;;
     --g) GTHR="$2"; shift 2 ;;
     --limit) LIMIT="$2"; shift 2 ;;
+    --seed) SEED="$2"; shift 2 ;;
     -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
@@ -48,7 +52,10 @@ TRAIN_EN="$DATA_DIR/distrib/shroom-vision.train.en.labeled.jsonl"
 IMG_DIR="$DATA_DIR/images"
 PROTO=splits/en.eval_protocol.json
 OUT=results/ablation
-SINGLE_CK="$OUT/single_copy_en/best_iou_lora_linear_single_f24_r16_s13.pt"
+SINGLE_CK="$OUT/single_copy_en/best_iou_lora_linear_single_f24_r16_s${SEED}.pt"
+ECHO_CK="$OUT/echo_en/best_iou_lora_linear_f24_r16_s${SEED}.pt"
+# seed 13 outputs keep their original (unsuffixed) directory names
+SFX=""; [ "$SEED" != "13" ] && SFX="_s${SEED}"
 mkdir -p "$OUT/logs"
 
 source scripts/connector/_env.sh
@@ -71,13 +78,33 @@ run_logged() {
 
 case "$PHASE" in
   single-copy-train)
-    # Identical to the final en run (cold start, seed 13, 5 epochs, LoRA 24-47) except
-    # for --single_copy. Best epoch by tune-202 IoU, like every other ablation row.
-    run_logged "$OUT/logs/single_copy_train_en.log" \
+    # Identical to the final en run (cold start, 5 epochs, LoRA 24-47) except for
+    # --single_copy. Best epoch by tune-202 IoU, like every other ablation row.
+    run_logged "$OUT/logs/single_copy_train_en_s${SEED}.log" \
       python scripts/connector/train_lora.py \
         --model_id "$MODEL" --train_file "$TRAIN_EN" --image_dir "$IMG_DIR" \
         --eval_ids "$PROTO" --out_dir "$OUT/single_copy_en" \
-        --arch linear --seed 13 --epochs 5 --lora_from 24 --single_copy --device "$DEVICE"
+        --arch linear --seed "$SEED" --epochs 5 --lora_from 24 --single_copy --device "$DEVICE"
+    ;;
+  echo-train)
+    # The final en recipe itself (echo prompt) under another seed: run-to-run variation
+    # of the submitted configuration, and the paired partner of single-copy-train.
+    run_logged "$OUT/logs/echo_train_en_s${SEED}.log" \
+      python scripts/connector/train_lora.py \
+        --model_id "$MODEL" --train_file "$TRAIN_EN" --image_dir "$IMG_DIR" \
+        --eval_ids "$PROTO" --out_dir "$OUT/echo_en" \
+        --arch linear --seed "$SEED" --epochs 5 --lora_from 24 --device "$DEVICE"
+    ;;
+  eval-echo-en)
+    [ -f "${CK:-$ECHO_CK}" ] || { echo "ERROR: echo checkpoint missing: ${CK:-$ECHO_CK}" >&2; exit 1; }
+    for split in tune_dev heldout; do
+      run_logged "$OUT/logs/eval_echo_en_${split}_s${SEED}.log" \
+        python scripts/connector/eval_ablation.py \
+          --checkpoint "${CK:-$ECHO_CK}" --model_id "$MODEL" --gold splits/dev.en.jsonl \
+          --eval_ids "$PROTO" --split "$split" --image_dir "$IMG_DIR" \
+          --out_dir "$OUT/echo_en_${split}${SFX}" --conditions correct \
+          --device "$DEVICE" $(thr_args)
+    done
     ;;
   eval-final-en)
     [ -f "$CK" ] || { echo "ERROR: --ck <final en checkpoint> missing: $CK" >&2; exit 1; }
@@ -93,11 +120,11 @@ case "$PHASE" in
   eval-single-en)
     [ -f "${CK:-$SINGLE_CK}" ] || { echo "ERROR: single-copy checkpoint missing: ${CK:-$SINGLE_CK}" >&2; exit 1; }
     for split in tune_dev heldout; do
-      run_logged "$OUT/logs/eval_single_en_${split}.log" \
+      run_logged "$OUT/logs/eval_single_en_${split}${SFX}.log" \
         python scripts/connector/eval_ablation.py \
           --checkpoint "${CK:-$SINGLE_CK}" --model_id "$MODEL" --gold splits/dev.en.jsonl \
           --eval_ids "$PROTO" --split "$split" --image_dir "$IMG_DIR" \
-          --out_dir "$OUT/single_en_${split}" --conditions correct \
+          --out_dir "$OUT/single_en_${split}${SFX}" --conditions correct \
           --device "$DEVICE" $(thr_args)
     done
     ;;
