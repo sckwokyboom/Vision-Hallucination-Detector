@@ -1,0 +1,179 @@
+{
+  "variant": "lora_linear_single_f24_r16_s13",
+  "metrics": {
+    "span_iou": 0.38286124885637285,
+    "official_iou": 0.38286124885637285,
+    "official_cor": 0.40631577059744756,
+    "official_cor_lbl": 0.17746545462483893,
+    "tau": 0.4,
+    "g_thr": 0.4,
+    "floor": 0.21287128712871287,
+    "gate_auc": 0.8067866023109552,
+    "gate_ops": [
+      {
+        "thr": 0.05,
+        "dirty_recall": 1.0,
+        "clean_spec": 0.0
+      },
+      {
+        "thr": 0.1,
+        "dirty_recall": 1.0,
+        "clean_spec": 0.0
+      },
+      {
+        "thr": 0.2,
+        "dirty_recall": 0.987,
+        "clean_spec": 0.186
+      },
+      {
+        "thr": 0.3,
+        "dirty_recall": 0.937,
+        "clean_spec": 0.326
+      },
+      {
+        "thr": 0.4,
+        "dirty_recall": 0.887,
+        "clean_spec": 0.535
+      },
+      {
+        "thr": 0.5,
+        "dirty_recall": 0.855,
+        "clean_spec": 0.628
+      },
+      {
+        "thr": 0.6,
+        "dirty_recall": 0.799,
+        "clean_spec": 0.721
+      },
+      {
+        "thr": 0.7,
+        "dirty_recall": 0.704,
+        "clean_spec": 0.814
+      },
+      {
+        "thr": 0.8,
+        "dirty_recall": 0.541,
+        "clean_spec": 0.837
+      },
+      {
+        "thr": 0.9,
+        "dirty_recall": 0.428,
+        "clean_spec": 0.93
+      },
+      {
+        "thr": 0.95,
+        "dirty_recall": 0.239,
+        "clean_spec": 0.93
+      }
+    ],
+    "dirty_iou": 0.27885517150306477,
+    "dirty_iou_ungated": 0.2819998255911151,
+    "clean_empty": 0.7674418604651163,
+    "dirty_gate_recall": 0.7610062893081762,
+    "gate_specificity": 0.7674418604651163,
+    "iou_gate_open": 0.36642952288419256,
+    "avg_spans": 4.821782178217822,
+    "gold_gate_iou": 0.43484144687617476,
+    "gate_sweep": [
+      {
+        "threshold": 0.0,
+        "g_thr": 0.0,
+        "gate_recall": 0.767,
+        "specificity": 0.744,
+        "dirty_iou": 0.282,
+        "cleanOK": 0.744,
+        "overall_iou": 0.3804
+      },
+      {
+        "threshold": 0.1,
+        "g_thr": 0.1,
+        "gate_recall": 0.767,
+        "specificity": 0.744,
+        "dirty_iou": 0.282,
+        "cleanOK": 0.744,
+        "overall_iou": 0.3804
+      },
+      {
+        "threshold": 0.2,
+        "g_thr": 0.2,
+        "gate_recall": 0.767,
+        "specificity": 0.744,
+        "dirty_iou": 0.282,
+        "cleanOK": 0.744,
+        "overall_iou": 0.3804
+      },
+      {
+        "threshold": 0.3,
+        "g_thr": 0.3,
+        "gate_recall": 0.767,
+        "specificity": 0.744,
+        "dirty_iou": 0.282,
+        "cleanOK": 0.744,
+        "overall_iou": 0.3804
+      },
+      {
+        "threshold": 0.4,
+        "g_thr": 0.4,
+        "gate_recall": 0.761,
+        "specificity": 0.767,
+        "dirty_iou": 0.2789,
+        "cleanOK": 0.767,
+        "overall_iou": 0.3829
+      },
+      {
+        "threshold": 0.5,
+        "g_thr": 0.5,
+        "gate_recall": 0.761,
+        "specificity": 0.767,
+        "dirty_iou": 0.2789,
+        "cleanOK": 0.767,
+        "overall_iou": 0.3829
+      },
+      {
+        "threshold": 0.6,
+        "g_thr": 0.6,
+        "gate_recall": 0.748,
+        "specificity": 0.767,
+        "dirty_iou": 0.2765,
+        "cleanOK": 0.767,
+        "overall_iou": 0.381
+      },
+      {
+        "threshold": 0.7,
+        "g_thr": 0.7,
+        "gate_recall": 0.692,
+        "specificity": 0.814,
+        "dirty_iou": 0.263,
+        "cleanOK": 0.814,
+        "overall_iou": 0.3803
+      },
+      {
+        "threshold": 0.8,
+        "g_thr": 0.8,
+        "gate_recall": 0.541,
+        "specificity": 0.837,
+        "dirty_iou": 0.2116,
+        "cleanOK": 0.837,
+        "overall_iou": 0.3448
+      },
+      {
+        "threshold": 0.9,
+        "g_thr": 0.9,
+        "gate_recall": 0.428,
+        "specificity": 0.93,
+        "dirty_iou": 0.1765,
+        "cleanOK": 0.93,
+        "overall_iou": 0.337
+      }
+    ],
+    "roc_auc": 0.8086650285286604,
+    "pr_auc": 0.443996252182484,
+    "pooled_pearson_debug": 0.44461681116132984,
+    "pooled_spearman_debug": 0.4050988027482847,
+    "pooled_cor_lbl_debug": -0.04041676887493264,
+    "cor_submission": 0.40631577059744756,
+    "cor_lbl": 0.17746545462483893
+  },
+  "best_iou_seen": 0.38286124885637285,
+  "best_checkpoint": "results/ablation/single_copy_en/best_iou_lora_linear_single_f24_r16_s13.pt"
+}

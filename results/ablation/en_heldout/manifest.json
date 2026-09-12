@@ -1,0 +1,16 @@
+{
+ "checkpoint": "results/lora_h100/a2/best_iou_lora_linear_f24_r16_s13.pt",
+ "epoch": 4,
+ "tau": 0.0,
+ "g_thr": 0.5,
+ "single_copy": false,
+ "gold": "splits/dev.en.jsonl",
+ "split": "heldout",
+ "n_items": 157,
+ "seed": 13,
+ "conditions": [
+  "correct",
+  "shuffled",
+  "no_image"
+ ]
+}

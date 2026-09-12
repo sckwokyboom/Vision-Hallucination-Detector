@@ -1,0 +1,34 @@
+[ck ] results/lora_ml/best_iou_lora_linear_f24_r16_s13.pt epoch=2 tune_iou=0.3792712869448967 thresholds: tau=0.0 g_thr=0.7 prompt=echo
+[data] 352 items from splits/dev.zh.jsonl split=tune_dev
+Loading weights:   0%|          | 0/677 [00:00<?, ?it/s]Loading weights:   0%|          | 3/677 [00:00<00:46, 14.40it/s]Loading weights:   3%|▎         | 20/677 [00:00<00:08, 75.78it/s]Loading weights:   5%|▌         | 35/677 [00:00<00:07, 83.19it/s]Loading weights:   7%|▋         | 48/677 [00:00<00:07, 88.02it/s]Loading weights:   9%|▉         | 64/677 [00:00<00:06, 98.60it/s]Loading weights:  12%|█▏        | 78/677 [00:00<00:05, 100.48it/s]Loading weights:  13%|█▎        | 91/677 [00:01<00:05, 100.88it/s]Loading weights:  16%|█▌        | 105/677 [00:01<00:05, 106.12it/s]Loading weights:  17%|█▋        | 118/677 [00:01<00:05, 106.68it/s]Loading weights:  20%|█▉        | 133/677 [00:01<00:04, 108.96it/s]Loading weights:  22%|██▏       | 146/677 [00:01<00:04, 109.76it/s]Loading weights:  24%|██▍       | 161/677 [00:01<00:04, 113.68it/s]Loading weights:  26%|██▌       | 173/677 [00:01<00:04, 106.29it/s]Loading weights:  28%|██▊       | 188/677 [00:01<00:04, 114.15it/s]Loading weights:  30%|██▉       | 202/677 [00:01<00:04, 113.75it/s]Loading weights:  32%|███▏      | 216/677 [00:02<00:04, 111.14it/s]Loading weights:  34%|███▍      | 230/677 [00:02<00:04, 109.04it/s]Loading weights:  36%|███▌      | 244/677 [00:02<00:04, 107.37it/s]Loading weights:  38%|███▊      | 256/677 [00:02<00:04, 99.25it/s] Loading weights:  40%|███▉      | 270/677 [00:02<00:03, 108.93it/s]Loading weights:  42%|████▏     | 283/677 [00:02<00:03, 114.11it/s]Loading weights:  44%|████▎     | 295/677 [00:02<00:03, 115.43it/s]Loading weights:  45%|████▌     | 307/677 [00:02<00:03, 108.06it/s]Loading weights:  47%|████▋     | 319/677 [00:03<00:03, 104.13it/s]Loading weights:  49%|████▊     | 330/677 [00:03<00:03, 100.11it/s]Loading weights:  50%|█████     | 341/677 [00:03<00:03, 91.70it/s] Loading weights:  52%|█████▏    | 352/677 [00:03<00:03, 96.25it/s]Loading weights:  54%|█████▍    | 366/677 [00:03<00:02, 107.63it/s]Loading weights:  56%|█████▌    | 378/677 [00:03<00:02, 110.87it/s]Loading weights:  58%|█████▊    | 390/677 [00:03<00:02, 103.26it/s]Loading weights:  59%|█████▉    | 401/677 [00:03<00:02, 99.58it/s] Loading weights:  61%|██████    | 412/677 [00:04<00:02, 97.64it/s]Loading weights:  62%|██████▏   | 422/677 [00:04<00:02, 94.68it/s]Loading weights:  64%|██████▍   | 436/677 [00:04<00:02, 90.21it/s]Loading weights:  66%|██████▋   | 449/677 [00:04<00:02, 99.83it/s]Loading weights:  69%|██████▊   | 464/677 [00:04<00:02, 103.60it/s]Loading weights:  71%|███████   | 478/677 [00:04<00:02, 96.07it/s] Loading weights:  73%|███████▎  | 493/677 [00:04<00:01, 100.55it/s]Loading weights:  75%|███████▍  | 505/677 [00:04<00:01, 94.73it/s] Loading weights:  77%|███████▋  | 519/677 [00:05<00:01, 97.41it/s]Loading weights:  79%|███████▊  | 533/677 [00:05<00:01, 107.40it/s]Loading weights:  81%|████████  | 547/677 [00:05<00:01, 98.35it/s] Loading weights:  83%|████████▎ | 561/677 [00:05<00:01, 99.63it/s]Loading weights:  85%|████████▍ | 575/677 [00:05<00:01, 100.62it/s]Loading weights:  87%|████████▋ | 588/677 [00:05<00:00, 104.91it/s]Loading weights:  89%|████████▉ | 601/677 [00:05<00:00, 101.82it/s]Loading weights:  91%|█████████ | 615/677 [00:06<00:00, 111.04it/s]Loading weights:  93%|█████████▎| 627/677 [00:06<00:00, 113.02it/s]Loading weights:  94%|█████████▍| 639/677 [00:06<00:00, 106.70it/s]Loading weights:  96%|█████████▌| 650/677 [00:06<00:00, 101.13it/s]Loading weights:  98%|█████████▊| 661/677 [00:06<00:00, 97.81it/s] Loading weights: 100%|██████████| 677/677 [00:06<00:00, 103.15it/s]
+  [correct] 50/352 (0.21s/item)
+  [correct] 100/352 (0.20s/item)
+  [correct] 150/352 (0.20s/item)
+  [correct] 200/352 (0.21s/item)
+  [correct] 250/352 (0.20s/item)
+  [correct] 300/352 (0.20s/item)
+  [correct] 350/352 (0.19s/item)
+[correct ] IoU=0.5147 Cor=0.5417 empty=0.56 dirtyIoU=0.314 cleanOK=0.88 visTok=262 [1.1 min]
+  [shuffled] 50/352 (0.15s/item)
+  [shuffled] 100/352 (0.15s/item)
+  [shuffled] 150/352 (0.17s/item)
+  [shuffled] 200/352 (0.17s/item)
+  [shuffled] 250/352 (0.17s/item)
+  [shuffled] 300/352 (0.17s/item)
+  [shuffled] 350/352 (0.17s/item)
+[shuffled] IoU=0.2264 Cor=0.2461 empty=0.09 dirtyIoU=0.281 cleanOK=0.13 visTok=262 [1.0 min]
+  [no_image] 50/352 (0.11s/item)
+  [no_image] 100/352 (0.11s/item)
+  [no_image] 150/352 (0.11s/item)
+  [no_image] 200/352 (0.11s/item)
+  [no_image] 250/352 (0.11s/item)
+  [no_image] 300/352 (0.11s/item)
+  [no_image] 350/352 (0.11s/item)
+[no_image] IoU=0.3967 Cor=0.4152 empty=0.69 dirtyIoU=0.148 cleanOK=0.85 visTok=0 [0.6 min]
+
+floor(predict-nothing)=0.3551  fixed thresholds tau=0.0 g_thr=0.7
+condition      IoU     Cor  empty dirtyIoU cleanOK
+correct     0.5147  0.5417   0.56    0.314    0.88
+shuffled    0.2264  0.2461   0.09    0.281    0.13
+no_image    0.3967  0.4152   0.69    0.148    0.85
+-> results/ablation/zh_dev

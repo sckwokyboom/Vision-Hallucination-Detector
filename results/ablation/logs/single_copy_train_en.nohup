@@ -1,0 +1,114 @@
+nohup: ignoring input
+en: train=3440 dev=359
+fr: train=3410 dev=357
+it: train=3417 dev=329
+zh: train=3438 dev=352
+=== python scripts/connector/train_lora.py --model_id /workspace/data/models/gemma-4-12B-it --train_file ../Shroom-Vision/distrib/shroom-vision.train.en.labeled.jsonl --image_dir ../Shroom-Vision/images --eval_ids splits/en.eval_protocol.json --out_dir results/ablation/single_copy_en --arch linear --seed 13 --epochs 5 --lora_from 24 --single_copy --device cuda:0 ===
+[data] train=3440 tune_dev=202 (heldout untouched)
+Loading weights:   0%|          | 0/677 [00:00<?, ?it/s]Loading weights:   0%|          | 3/677 [00:00<00:40, 16.72it/s]Loading weights:   3%|▎         | 20/677 [00:00<00:08, 74.68it/s]Loading weights:   5%|▌         | 34/677 [00:00<00:07, 88.88it/s]Loading weights:   7%|▋         | 45/677 [00:00<00:06, 95.56it/s]Loading weights:   8%|▊         | 56/677 [00:00<00:06, 94.18it/s]Loading weights:  10%|▉         | 66/677 [00:00<00:06, 90.63it/s]Loading weights:  12%|█▏        | 78/677 [00:00<00:06, 90.01it/s]Loading weights:  13%|█▎        | 90/677 [00:01<00:06, 87.27it/s]Loading weights:  16%|█▌        | 105/677 [00:01<00:06, 94.80it/s]Loading weights:  17%|█▋        | 118/677 [00:01<00:05, 103.51it/s]Loading weights:  19%|█▉        | 132/677 [00:01<00:05, 108.96it/s]Loading weights:  22%|██▏       | 146/677 [00:01<00:04, 107.28it/s]Loading weights:  24%|██▎       | 160/677 [00:01<00:05, 102.07it/s]Loading weights:  26%|██▌       | 173/677 [00:01<00:04, 106.55it/s]Loading weights:  28%|██▊       | 187/677 [00:01<00:04, 105.84it/s]Loading weights:  30%|██▉       | 201/677 [00:02<00:04, 105.46it/s]Loading weights:  32%|███▏      | 215/677 [00:02<00:04, 104.94it/s]Loading weights:  34%|███▍      | 229/677 [00:02<00:04, 104.58it/s]Loading weights:  36%|███▌      | 243/677 [00:02<00:04, 96.58it/s] Loading weights:  38%|███▊      | 256/677 [00:02<00:04, 94.43it/s]Loading weights:  40%|███▉      | 270/677 [00:02<00:03, 104.68it/s]Loading weights:  42%|████▏     | 284/677 [00:02<00:04, 95.53it/s] Loading weights:  44%|████▍     | 299/677 [00:03<00:03, 100.02it/s]Loading weights:  46%|████▌     | 313/677 [00:03<00:03, 100.89it/s]Loading weights:  48%|████▊     | 326/677 [00:03<00:03, 99.47it/s] Loading weights:  50%|█████     | 339/677 [00:03<00:03, 96.14it/s]Loading weights:  52%|█████▏    | 354/677 [00:03<00:03, 100.48it/s]Loading weights:  54%|█████▍    | 367/677 [00:03<00:02, 107.30it/s]Loading weights:  56%|█████▋    | 381/677 [00:03<00:02, 106.48it/s]Loading weights:  58%|█████▊    | 394/677 [00:03<00:02, 112.31it/s]Loading weights:  60%|██████    | 408/677 [00:04<00:02, 109.78it/s]Loading weights:  62%|██████▏   | 420/677 [00:04<00:02, 109.25it/s]Loading weights:  64%|██████▍   | 432/677 [00:04<00:02, 101.52it/s]Loading weights:  65%|██████▌   | 443/677 [00:04<00:02, 98.20it/s] Loading weights:  67%|██████▋   | 453/677 [00:04<00:02, 93.70it/s]Loading weights:  69%|██████▊   | 465/677 [00:04<00:02, 92.28it/s]Loading weights:  71%|███████   | 478/677 [00:04<00:02, 93.57it/s]Loading weights:  73%|███████▎  | 493/677 [00:04<00:01, 99.14it/s]Loading weights:  75%|███████▍  | 505/677 [00:05<00:01, 101.74it/s]Loading weights:  77%|███████▋  | 519/677 [00:05<00:01, 102.57it/s]Loading weights:  79%|███████▊  | 533/677 [00:05<00:01, 103.18it/s]Loading weights:  81%|████████  | 547/677 [00:05<00:01, 103.43it/s]Loading weights:  83%|████████▎ | 561/677 [00:05<00:01, 103.64it/s]Loading weights:  85%|████████▍ | 575/677 [00:05<00:01, 95.92it/s] Loading weights:  87%|████████▋ | 588/677 [00:05<00:00, 94.10it/s]Loading weights:  89%|████████▉ | 602/677 [00:06<00:00, 96.77it/s]Loading weights:  91%|█████████ | 617/677 [00:06<00:00, 101.04it/s]Loading weights:  93%|█████████▎| 631/677 [00:06<00:00, 101.86it/s]Loading weights:  95%|█████████▌| 644/677 [00:06<00:00, 105.62it/s]Loading weights:  97%|█████████▋| 658/677 [00:06<00:00, 105.04it/s]Loading weights: 100%|██████████| 677/677 [00:06<00:00, 101.72it/s]
+[prompt] SINGLE-COPY control: no review copy, strictly causal features
+[lora] wrapped 92 projections from layer 24 (r=16, alpha=32)
+[model] arch=linear decoder=14.6M lora=10.7M
+/workspace/data/visual_hal_detector/Vision-Hallucination-Detector/.venv-cluster/lib/python3.12/site-packages/PIL/Image.py:1136: UserWarning: Palette images with Transparency expressed in bytes should be converted to RGBA images
+  warnings.warn(
+[ep 1 b200/3440] loss=1.9440
+[ep 1 b400/3440] loss=1.8191
+[ep 1 b600/3440] loss=1.7607
+[ep 1 b800/3440] loss=1.7236
+[ep 1 b1000/3440] loss=1.6973
+[ep 1 b1200/3440] loss=1.6763
+[ep 1 b1400/3440] loss=1.6552
+[ep 1 b1600/3440] loss=1.6166
+[ep 1 b1800/3440] loss=1.6014
+[ep 1 b2000/3440] loss=1.5792
+[ep 1 b2200/3440] loss=1.5530
+[ep 1 b2400/3440] loss=1.5333
+[ep 1 b2600/3440] loss=1.5263
+[ep 1 b2800/3440] loss=1.5083
+[ep 1 b3000/3440] loss=1.4984
+[ep 1 b3200/3440] loss=1.4869
+[ep 1 b3400/3440] loss=1.4752
+[ep 1] loss=1.4735 dev: iou=0.3253 (fl=0.213, tau=0.0, g=0.7) dirty=0.206 cleanOK=0.77 gateRec=0.67 gateSpec=0.77 Cor=0.340 Cor_lbl=0.192 poolR=0.391 lora=warmup loss=v3 [10.1m]
+[ep 2 b200/3440] loss=1.2519
+[ep 2 b400/3440] loss=1.2882
+/workspace/data/visual_hal_detector/Vision-Hallucination-Detector/.venv-cluster/lib/python3.12/site-packages/PIL/Image.py:1136: UserWarning: Palette images with Transparency expressed in bytes should be converted to RGBA images
+  warnings.warn(
+[ep 2 b600/3440] loss=1.2798
+[ep 2 b800/3440] loss=1.2592
+[ep 2 b1000/3440] loss=1.2766
+[ep 2 b1200/3440] loss=1.2789
+[ep 2 b1400/3440] loss=1.2723
+[ep 2 b1600/3440] loss=1.2643
+[ep 2 b1800/3440] loss=1.2632
+[ep 2 b2000/3440] loss=1.2752
+[ep 2 b2200/3440] loss=1.2695
+[ep 2 b2400/3440] loss=1.2634
+[ep 2 b2600/3440] loss=1.2634
+[ep 2 b2800/3440] loss=1.2556
+[ep 2 b3000/3440] loss=1.2467
+[ep 2 b3200/3440] loss=1.2495
+[ep 2 b3400/3440] loss=1.2468
+[ep 2] loss=1.2455 dev: iou=0.3548 (fl=0.213, tau=0.0, g=0.8) dirty=0.237 cleanOK=0.79 gateRec=0.67 gateSpec=0.79 Cor=0.356 Cor_lbl=0.184 poolR=0.416 lora=on loss=v3 [22.6m]
+/workspace/data/visual_hal_detector/Vision-Hallucination-Detector/.venv-cluster/lib/python3.12/site-packages/PIL/Image.py:1136: UserWarning: Palette images with Transparency expressed in bytes should be converted to RGBA images
+  warnings.warn(
+[ep 3 b200/3440] loss=1.1152
+[ep 3 b400/3440] loss=1.1552
+[ep 3 b600/3440] loss=1.1702
+[ep 3 b800/3440] loss=1.1606
+[ep 3 b1000/3440] loss=1.1599
+[ep 3 b1200/3440] loss=1.1555
+[ep 3 b1400/3440] loss=1.1431
+[ep 3 b1600/3440] loss=1.1521
+[ep 3 b1800/3440] loss=1.1471
+[ep 3 b2000/3440] loss=1.1515
+[ep 3 b2200/3440] loss=1.1453
+[ep 3 b2400/3440] loss=1.1416
+[ep 3 b2600/3440] loss=1.1305
+[ep 3 b2800/3440] loss=1.1290
+[ep 3 b3000/3440] loss=1.1224
+[ep 3 b3200/3440] loss=1.1199
+[ep 3 b3400/3440] loss=1.1248
+[ep 3] loss=1.1252 dev: iou=0.3642 (fl=0.213, tau=0.0, g=0.7) dirty=0.268 cleanOK=0.72 gateRec=0.76 gateSpec=0.72 Cor=0.399 Cor_lbl=0.194 poolR=0.447 lora=on loss=v3 [34.8m]
+/workspace/data/visual_hal_detector/Vision-Hallucination-Detector/.venv-cluster/lib/python3.12/site-packages/PIL/Image.py:1136: UserWarning: Palette images with Transparency expressed in bytes should be converted to RGBA images
+  warnings.warn(
+[ep 4 b200/3440] loss=1.0490
+[ep 4 b400/3440] loss=1.0740
+[ep 4 b600/3440] loss=1.1041
+[ep 4 b800/3440] loss=1.0744
+[ep 4 b1000/3440] loss=1.0508
+[ep 4 b1200/3440] loss=1.0554
+[ep 4 b1400/3440] loss=1.0563
+[ep 4 b1600/3440] loss=1.0386
+[ep 4 b1800/3440] loss=1.0502
+[ep 4 b2000/3440] loss=1.0454
+[ep 4 b2200/3440] loss=1.0396
+[ep 4 b2400/3440] loss=1.0311
+[ep 4 b2600/3440] loss=1.0377
+[ep 4 b2800/3440] loss=1.0435
+[ep 4 b3000/3440] loss=1.0403
+[ep 4 b3200/3440] loss=1.0481
+[ep 4 b3400/3440] loss=1.0489
+[ep 4] loss=1.0484 dev: iou=0.3829 (fl=0.213, tau=0.4, g=0.4) dirty=0.279 cleanOK=0.77 gateRec=0.76 gateSpec=0.77 Cor=0.406 Cor_lbl=0.177 poolR=0.445 lora=on loss=v3 [47.1m]
+[ep 5 b200/3440] loss=1.0395
+[ep 5 b400/3440] loss=0.9925
+[ep 5 b600/3440] loss=1.0080
+/workspace/data/visual_hal_detector/Vision-Hallucination-Detector/.venv-cluster/lib/python3.12/site-packages/PIL/Image.py:1136: UserWarning: Palette images with Transparency expressed in bytes should be converted to RGBA images
+  warnings.warn(
+[ep 5 b800/3440] loss=0.9880
+[ep 5 b1000/3440] loss=0.9865
+[ep 5 b1200/3440] loss=0.9838
+[ep 5 b1400/3440] loss=0.9935
+[ep 5 b1600/3440] loss=0.9795
+[ep 5 b1800/3440] loss=0.9856
+[ep 5 b2000/3440] loss=0.9878
+[ep 5 b2200/3440] loss=0.9867
+[ep 5 b2400/3440] loss=0.9885
+[ep 5 b2600/3440] loss=0.9903
+[ep 5 b2800/3440] loss=0.9933
+[ep 5 b3000/3440] loss=0.9869
+[ep 5 b3200/3440] loss=0.9880
+[ep 5 b3400/3440] loss=0.9853
+[ep 5] loss=0.9830 dev: iou=0.3761 (fl=0.213, tau=0.3, g=0.0) dirty=0.270 cleanOK=0.77 gateRec=0.79 gateSpec=0.77 Cor=0.385 Cor_lbl=0.167 poolR=0.446 lora=on loss=v3 [59.4m]
+[best] loaded epoch 4 from results/ablation/single_copy_en/best_iou_lora_linear_single_f24_r16_s13.pt for final predictions
+DONE lora_linear_single_f24_r16_s13: final iou=0.3829 best=0.3829 -> results/ablation/single_copy_en
+done: single-copy-train -> results/ablation

@@ -1,0 +1,14 @@
+{
+ "checkpoint": "results/ablation/single_copy_en/best_iou_lora_linear_single_f24_r16_s13.pt",
+ "epoch": 4,
+ "tau": 0.4,
+ "g_thr": 0.4,
+ "single_copy": true,
+ "gold": "splits/dev.en.jsonl",
+ "split": "heldout",
+ "n_items": 157,
+ "seed": 13,
+ "conditions": [
+  "correct"
+ ]
+}

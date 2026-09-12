@@ -1,0 +1,27 @@
+{
+ "correct": {
+  "IoU": 0.38597153560926706,
+  "Cor": 0.4103850506645359,
+  "n": 202,
+  "empty_rate": 0.35148514851485146,
+  "dirty_iou": 0.2828066049878739,
+  "clean_ok": 0.7674418604651163,
+  "mean_visual_tokens": 262.86633663366337,
+  "minutes": 0.6137534538904826
+ },
+ "_floor_predict_nothing": 0.21287128712871287,
+ "_manifest": {
+  "checkpoint": "results/ablation/single_copy_en/best_iou_lora_linear_single_f24_r16_s13.pt",
+  "epoch": 4,
+  "tau": 0.4,
+  "g_thr": 0.4,
+  "single_copy": true,
+  "gold": "splits/dev.en.jsonl",
+  "split": "tune_dev",
+  "n_items": 202,
+  "seed": 13,
+  "conditions": [
+   "correct"
+  ]
+ }
+}

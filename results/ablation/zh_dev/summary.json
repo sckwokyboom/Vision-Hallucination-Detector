@@ -1,0 +1,49 @@
+{
+ "correct": {
+  "IoU": 0.5147339463618583,
+  "Cor": 0.5416949655620893,
+  "n": 352,
+  "empty_rate": 0.5596590909090909,
+  "dirty_iou": 0.31359625162719873,
+  "clean_ok": 0.88,
+  "mean_visual_tokens": 262.1168091168091,
+  "minutes": 1.132571772734324
+ },
+ "shuffled": {
+  "IoU": 0.22640465141948757,
+  "Cor": 0.24614516442046136,
+  "n": 352,
+  "empty_rate": 0.08806818181818182,
+  "dirty_iou": 0.2805922348002627,
+  "clean_ok": 0.128,
+  "mean_visual_tokens": 262.2022792022792,
+  "minutes": 1.0057124177614847
+ },
+ "no_image": {
+  "IoU": 0.3967259899778938,
+  "Cor": 0.4151555870846888,
+  "n": 352,
+  "empty_rate": 0.6875,
+  "dirty_iou": 0.1482270857806988,
+  "clean_ok": 0.848,
+  "mean_visual_tokens": 0.0,
+  "minutes": 0.6226492722829183
+ },
+ "_floor_predict_nothing": 0.35511363636363635,
+ "_manifest": {
+  "checkpoint": "results/lora_ml/best_iou_lora_linear_f24_r16_s13.pt",
+  "epoch": 2,
+  "tau": 0.0,
+  "g_thr": 0.7,
+  "single_copy": false,
+  "gold": "splits/dev.zh.jsonl",
+  "split": "tune_dev",
+  "n_items": 352,
+  "seed": 13,
+  "conditions": [
+   "correct",
+   "shuffled",
+   "no_image"
+  ]
+ }
+}

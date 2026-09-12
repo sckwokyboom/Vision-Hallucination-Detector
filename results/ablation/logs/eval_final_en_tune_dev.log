@@ -1,0 +1,25 @@
+[ck ] results/lora_h100/a2/best_iou_lora_linear_f24_r16_s13.pt epoch=4 tune_iou=0.39245949846629585 thresholds: tau=0.0 g_thr=0.5 prompt=echo
+[data] 202 items from splits/dev.en.jsonl split=tune_dev
+Loading weights:   0%|          | 0/677 [00:00<?, ?it/s]Loading weights:   0%|          | 3/677 [00:00<00:49, 13.52it/s]Loading weights:   3%|▎         | 20/677 [00:00<00:08, 74.35it/s]Loading weights:   5%|▌         | 34/677 [00:00<00:06, 94.73it/s]Loading weights:   7%|▋         | 48/677 [00:00<00:06, 91.40it/s]Loading weights:   9%|▉         | 63/677 [00:00<00:06, 98.24it/s]Loading weights:  11%|█▏        | 77/677 [00:00<00:06, 99.96it/s]Loading weights:  13%|█▎        | 89/677 [00:00<00:05, 102.33it/s]Loading weights:  15%|█▍        | 100/677 [00:01<00:05, 104.11it/s]Loading weights:  16%|█▋        | 111/677 [00:01<00:05, 98.00it/s] Loading weights:  18%|█▊        | 122/677 [00:01<00:05, 98.33it/s]Loading weights:  20%|█▉        | 133/677 [00:01<00:05, 92.98it/s]Loading weights:  22%|██▏       | 147/677 [00:01<00:05, 96.49it/s]Loading weights:  24%|██▎       | 160/677 [00:01<00:04, 104.94it/s]Loading weights:  25%|██▌       | 172/677 [00:01<00:04, 105.84it/s]Loading weights:  27%|██▋       | 183/677 [00:01<00:04, 106.87it/s]Loading weights:  29%|██▊       | 194/677 [00:02<00:04, 101.84it/s]Loading weights:  30%|███       | 205/677 [00:02<00:04, 98.45it/s] Loading weights:  32%|███▏      | 216/677 [00:02<00:04, 92.86it/s]Loading weights:  34%|███▍      | 229/677 [00:02<00:04, 93.80it/s]Loading weights:  36%|███▌      | 243/677 [00:02<00:04, 96.92it/s]Loading weights:  38%|███▊      | 256/677 [00:02<00:04, 102.38it/s]Loading weights:  40%|███▉      | 270/677 [00:02<00:04, 99.47it/s] Loading weights:  42%|████▏     | 284/677 [00:02<00:03, 100.75it/s]Loading weights:  44%|████▍     | 299/677 [00:03<00:03, 103.98it/s]Loading weights:  46%|████▌     | 313/677 [00:03<00:03, 104.05it/s]Loading weights:  48%|████▊     | 326/677 [00:03<00:03, 110.18it/s]Loading weights:  50%|████▉     | 338/677 [00:03<00:03, 109.81it/s]Loading weights:  52%|█████▏    | 352/677 [00:03<00:03, 108.12it/s]Loading weights:  54%|█████▎    | 363/677 [00:03<00:02, 108.49it/s]Loading weights:  55%|█████▌    | 374/677 [00:03<00:02, 103.03it/s]Loading weights:  57%|█████▋    | 385/677 [00:03<00:02, 98.71it/s] Loading weights:  58%|█████▊    | 396/677 [00:04<00:03, 93.25it/s]Loading weights:  60%|██████    | 408/677 [00:04<00:02, 100.09it/s]Loading weights:  62%|██████▏   | 421/677 [00:04<00:02, 105.00it/s]Loading weights:  64%|██████▍   | 435/677 [00:04<00:02, 105.58it/s]Loading weights:  66%|██████▋   | 449/677 [00:04<00:02, 96.96it/s] Loading weights:  68%|██████▊   | 463/677 [00:04<00:02, 99.08it/s]Loading weights:  71%|███████   | 478/677 [00:04<00:01, 102.90it/s]Loading weights:  73%|███████▎  | 492/677 [00:04<00:01, 95.67it/s] Loading weights:  74%|███████▍  | 504/677 [00:05<00:01, 98.74it/s]Loading weights:  77%|███████▋  | 519/677 [00:05<00:01, 95.31it/s]Loading weights:  79%|███████▊  | 533/677 [00:05<00:01, 105.40it/s]Loading weights:  81%|████████  | 546/677 [00:05<00:01, 102.71it/s]Loading weights:  83%|████████▎ | 561/677 [00:05<00:01, 105.34it/s]Loading weights:  85%|████████▍ | 574/677 [00:05<00:00, 110.89it/s]Loading weights:  87%|████████▋ | 586/677 [00:05<00:00, 109.95it/s]Loading weights:  88%|████████▊ | 598/677 [00:05<00:00, 103.42it/s]Loading weights:  90%|████████▉ | 609/677 [00:06<00:00, 98.00it/s] Loading weights:  91%|█████████▏| 619/677 [00:06<00:00, 95.62it/s]Loading weights:  93%|█████████▎| 631/677 [00:06<00:00, 93.40it/s]Loading weights:  95%|█████████▌| 644/677 [00:06<00:00, 102.55it/s]Loading weights:  97%|█████████▋| 657/677 [00:06<00:00, 108.16it/s]Loading weights:  99%|█████████▉| 669/677 [00:06<00:00, 108.06it/s]Loading weights: 100%|██████████| 677/677 [00:06<00:00, 101.14it/s]
+  [correct] 50/202 (0.20s/item)
+  [correct] 100/202 (0.19s/item)
+  [correct] 150/202 (0.18s/item)
+  [correct] 200/202 (0.17s/item)
+[correct ] IoU=0.4151 Cor=0.4426 empty=0.28 dirtyIoU=0.326 cleanOK=0.74 visTok=263 [0.6 min]
+  [shuffled] 50/202 (0.14s/item)
+  [shuffled] 100/202 (0.14s/item)
+  [shuffled] 150/202 (0.13s/item)
+  [shuffled] 200/202 (0.13s/item)
+[shuffled] IoU=0.1823 Cor=0.1514 empty=0.00 dirtyIoU=0.225 cleanOK=0.02 visTok=262 [0.5 min]
+  [no_image] 50/202 (0.10s/item)
+  [no_image] 100/202 (0.10s/item)
+  [no_image] 150/202 (0.09s/item)
+  [no_image] 200/202 (0.09s/item)
+[no_image] IoU=0.2908 Cor=0.3242 empty=0.31 dirtyIoU=0.206 cleanOK=0.60 visTok=0 [0.3 min]
+
+floor(predict-nothing)=0.2129  fixed thresholds tau=0.0 g_thr=0.5
+condition      IoU     Cor  empty dirtyIoU cleanOK
+correct     0.4151  0.4426   0.28    0.326    0.74
+shuffled    0.1823  0.1514   0.00    0.225    0.02
+no_image    0.2908  0.3242   0.31    0.206    0.60
+-> results/ablation/en_tune_dev

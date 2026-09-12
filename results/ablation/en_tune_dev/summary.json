@@ -1,0 +1,49 @@
+{
+ "correct": {
+  "IoU": 0.415096043198343,
+  "Cor": 0.44264387699096197,
+  "n": 202,
+  "empty_rate": 0.27722772277227725,
+  "dirty_iou": 0.32609685991236026,
+  "clean_ok": 0.7441860465116279,
+  "mean_visual_tokens": 262.86633663366337,
+  "minutes": 0.5680197556813558
+ },
+ "shuffled": {
+  "IoU": 0.1822808443586923,
+  "Cor": 0.15144751717433033,
+  "n": 202,
+  "empty_rate": 0.0049504950495049506,
+  "dirty_iou": 0.2252876135877726,
+  "clean_ok": 0.023255813953488372,
+  "mean_visual_tokens": 262.0495049504951,
+  "minutes": 0.4591541608174642
+ },
+ "no_image": {
+  "IoU": 0.29076395745159966,
+  "Cor": 0.32416633558138463,
+  "n": 202,
+  "empty_rate": 0.3069306930693069,
+  "dirty_iou": 0.20587622267435932,
+  "clean_ok": 0.6046511627906976,
+  "mean_visual_tokens": 0.0,
+  "minutes": 0.30533379316329956
+ },
+ "_floor_predict_nothing": 0.21287128712871287,
+ "_manifest": {
+  "checkpoint": "results/lora_h100/a2/best_iou_lora_linear_f24_r16_s13.pt",
+  "epoch": 4,
+  "tau": 0.0,
+  "g_thr": 0.5,
+  "single_copy": false,
+  "gold": "splits/dev.en.jsonl",
+  "split": "tune_dev",
+  "n_items": 202,
+  "seed": 13,
+  "conditions": [
+   "correct",
+   "shuffled",
+   "no_image"
+  ]
+ }
+}

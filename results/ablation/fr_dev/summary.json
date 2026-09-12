@@ -1,0 +1,49 @@
+{
+ "correct": {
+  "IoU": 0.44472818083653043,
+  "Cor": 0.43279565080557736,
+  "n": 357,
+  "empty_rate": 0.38375350140056025,
+  "dirty_iou": 0.31780063967586203,
+  "clean_ok": 0.7452830188679245,
+  "mean_visual_tokens": 262.7955182072829,
+  "minutes": 1.1001320719718932
+ },
+ "shuffled": {
+  "IoU": 0.2224441054441844,
+  "Cor": 0.13516193595286227,
+  "n": 357,
+  "empty_rate": 0.028011204481792718,
+  "dirty_iou": 0.28849619778316266,
+  "clean_ok": 0.0660377358490566,
+  "mean_visual_tokens": 261.5098039215686,
+  "minutes": 0.9589755256970723
+ },
+ "no_image": {
+  "IoU": 0.3432795625321359,
+  "Cor": 0.33670065902704827,
+  "n": 357,
+  "empty_rate": 0.4369747899159664,
+  "dirty_iou": 0.22131794352180284,
+  "clean_ok": 0.6320754716981132,
+  "mean_visual_tokens": 0.0,
+  "minutes": 0.6426574269930522
+ },
+ "_floor_predict_nothing": 0.2969187675070028,
+ "_manifest": {
+  "checkpoint": "results/lora_fr/best_iou_lora_linear_f24_r16_s13.pt",
+  "epoch": 3,
+  "tau": 0.4,
+  "g_thr": 0.0,
+  "single_copy": false,
+  "gold": "splits/dev.fr.jsonl",
+  "split": "tune_dev",
+  "n_items": 357,
+  "seed": 13,
+  "conditions": [
+   "correct",
+   "shuffled",
+   "no_image"
+  ]
+ }
+}

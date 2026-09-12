@@ -1,0 +1,22 @@
+[ck ] results/lora_h100/a2/best_iou_lora_linear_f24_r16_s13.pt epoch=4 tune_iou=0.39245949846629585 thresholds: tau=0.0 g_thr=0.5 prompt=echo
+[data] 157 items from splits/dev.en.jsonl split=heldout
+Loading weights:   0%|          | 0/677 [00:00<?, ?it/s]Loading weights:   0%|          | 3/677 [00:00<00:48, 13.90it/s]Loading weights:   3%|▎         | 20/677 [00:00<00:08, 73.99it/s]Loading weights:   5%|▌         | 35/677 [00:00<00:06, 95.83it/s]Loading weights:   7%|▋         | 49/677 [00:00<00:06, 93.54it/s]Loading weights:   9%|▉         | 64/677 [00:00<00:05, 106.68it/s]Loading weights:  12%|█▏        | 78/677 [00:00<00:05, 115.25it/s]Loading weights:  13%|█▎        | 91/677 [00:00<00:04, 118.11it/s]Loading weights:  16%|█▌        | 105/677 [00:01<00:04, 122.71it/s]Loading weights:  18%|█▊        | 119/677 [00:01<00:04, 126.27it/s]Loading weights:  20%|█▉        | 133/677 [00:01<00:04, 128.63it/s]Loading weights:  22%|██▏       | 147/677 [00:01<00:04, 129.05it/s]Loading weights:  24%|██▍       | 161/677 [00:01<00:04, 126.12it/s]Loading weights:  26%|██▌       | 174/677 [00:01<00:04, 121.03it/s]Loading weights:  28%|██▊       | 188/677 [00:01<00:03, 122.60it/s]Loading weights:  30%|██▉       | 202/677 [00:01<00:03, 122.57it/s]Loading weights:  33%|███▎      | 222/677 [00:01<00:03, 141.29it/s]Loading weights:  36%|███▌      | 242/677 [00:02<00:02, 153.60it/s]Loading weights:  38%|███▊      | 258/677 [00:02<00:03, 134.56it/s]Loading weights:  40%|████      | 272/677 [00:02<00:03, 134.14it/s]Loading weights:  43%|████▎     | 290/677 [00:02<00:02, 144.56it/s]Loading weights:  45%|████▌     | 305/677 [00:02<00:02, 141.42it/s]Loading weights:  47%|████▋     | 320/677 [00:02<00:02, 140.14it/s]Loading weights:  49%|████▉     | 335/677 [00:02<00:02, 133.71it/s]Loading weights:  52%|█████▏    | 349/677 [00:02<00:02, 131.53it/s]Loading weights:  54%|█████▎    | 363/677 [00:02<00:02, 128.62it/s]Loading weights:  56%|█████▌    | 376/677 [00:03<00:02, 124.87it/s]Loading weights:  57%|█████▋    | 389/677 [00:03<00:02, 122.18it/s]Loading weights:  59%|█████▉    | 402/677 [00:03<00:02, 117.75it/s]Loading weights:  61%|██████▏   | 416/677 [00:03<00:02, 121.47it/s]Loading weights:  63%|██████▎   | 429/677 [00:03<00:02, 116.46it/s]Loading weights:  65%|██████▌   | 441/677 [00:03<00:02, 115.36it/s]Loading weights:  67%|██████▋   | 453/677 [00:03<00:01, 113.88it/s]Loading weights:  69%|██████▊   | 465/677 [00:03<00:01, 111.75it/s]Loading weights:  71%|███████   | 479/677 [00:03<00:01, 115.49it/s]Loading weights:  73%|███████▎  | 493/677 [00:04<00:01, 118.02it/s]Loading weights:  75%|███████▍  | 505/677 [00:04<00:01, 118.04it/s]Loading weights:  77%|███████▋  | 520/677 [00:04<00:01, 115.94it/s]Loading weights:  79%|███████▊  | 533/677 [00:04<00:01, 114.05it/s]Loading weights:  81%|████████  | 548/677 [00:04<00:01, 113.10it/s]Loading weights:  83%|████████▎ | 561/677 [00:04<00:01, 107.62it/s]Loading weights:  85%|████████▍ | 575/677 [00:04<00:00, 115.76it/s]Loading weights:  87%|████████▋ | 587/677 [00:04<00:00, 113.94it/s]Loading weights:  88%|████████▊ | 599/677 [00:05<00:00, 115.23it/s]Loading weights:  90%|█████████ | 611/677 [00:05<00:00, 107.78it/s]Loading weights:  92%|█████████▏| 622/677 [00:05<00:00, 103.68it/s]Loading weights:  94%|█████████▎| 633/677 [00:05<00:00, 97.51it/s] Loading weights:  95%|█████████▌| 644/677 [00:05<00:00, 92.26it/s]Loading weights:  97%|█████████▋| 659/677 [00:05<00:00, 98.36it/s]Loading weights: 100%|██████████| 677/677 [00:05<00:00, 118.46it/s]
+  [correct] 50/157 (0.24s/item)
+  [correct] 100/157 (0.23s/item)
+  [correct] 150/157 (0.22s/item)
+[correct ] IoU=0.3850 Cor=0.4267 empty=0.32 dirtyIoU=0.294 cleanOK=0.73 visTok=261 [0.6 min]
+  [shuffled] 50/157 (0.13s/item)
+  [shuffled] 100/157 (0.15s/item)
+  [shuffled] 150/157 (0.16s/item)
+[shuffled] IoU=0.2087 Cor=0.1828 empty=0.03 dirtyIoU=0.240 cleanOK=0.09 visTok=261 [0.4 min]
+  [no_image] 50/157 (0.12s/item)
+  [no_image] 100/157 (0.11s/item)
+  [no_image] 150/157 (0.12s/item)
+[no_image] IoU=0.2841 Cor=0.3246 empty=0.31 dirtyIoU=0.223 cleanOK=0.52 visTok=0 [0.3 min]
+
+floor(predict-nothing)=0.2102  fixed thresholds tau=0.0 g_thr=0.5
+condition      IoU     Cor  empty dirtyIoU cleanOK
+correct     0.3850  0.4267   0.32    0.294    0.73
+shuffled    0.2087  0.1828   0.03    0.240    0.09
+no_image    0.2841  0.3246   0.31    0.223    0.52
+-> results/ablation/en_heldout
