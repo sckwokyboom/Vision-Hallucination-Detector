@@ -67,9 +67,14 @@ def select_items(gold_path, eval_ids, split):
         return items
     proto = json.load(open(eval_ids))
     key = {"tune_dev": "tune_dev", "heldout": "heldout"}[split]
-    keep = set(proto.get(key) or proto.get("tune_dev200") or [])
+    keep = set(proto.get(key) or (proto.get("tune_dev200") if split == "tune_dev" else []) or [])
     if not keep:
-        raise SystemExit(f"{eval_ids} has no '{key}' ids")
+        if split == "heldout":
+            raise SystemExit(f"{eval_ids} has no 'heldout' ids")
+        # fr/it/zh: the whole hash-dev split is the tuning split
+        print(f"[data] {eval_ids} lists no '{key}' ids -> scoring the whole gold file",
+              flush=True)
+        return items
     return [it for it in items if it.id in keep]
 
 
