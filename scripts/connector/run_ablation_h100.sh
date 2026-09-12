@@ -104,10 +104,15 @@ case "$PHASE" in
   eval-lang)
     [ -f "$CK" ] || { echo "ERROR: --ck <$LANG_ checkpoint> missing: $CK" >&2; exit 1; }
     [ -f "splits/dev.$LANG_.jsonl" ] || { echo "ERROR: splits/dev.$LANG_.jsonl missing" >&2; exit 1; }
+    # fr/it/zh thresholds were swept on the ids listed in their protocol file; score the
+    # same ids. Without a protocol file the whole hash-dev split is used.
+    SPLIT_ARGS=(--split all)
+    [ -f "splits/$LANG_.eval_protocol.json" ] && \
+      SPLIT_ARGS=(--eval_ids "splits/$LANG_.eval_protocol.json" --split tune_dev)
     run_logged "$OUT/logs/eval_${LANG_}_dev.log" \
       python scripts/connector/eval_ablation.py \
         --checkpoint "$CK" --model_id "$MODEL" --gold "splits/dev.$LANG_.jsonl" \
-        --split all --image_dir "$IMG_DIR" --out_dir "$OUT/${LANG_}_dev" \
+        "${SPLIT_ARGS[@]}" --image_dir "$IMG_DIR" --out_dir "$OUT/${LANG_}_dev" \
         --conditions correct,shuffled,no_image --device "$DEVICE" $(thr_args)
     ;;
   *) echo "ERROR: unknown --phase $PHASE" >&2; exit 2 ;;
