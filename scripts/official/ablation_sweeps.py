@@ -79,7 +79,11 @@ def score(gold, spans_by_id):
     per = eval_official.per_item(gold, pred)
     a = eval_official.agg(per)
     empty = float(np.mean([0.0 if pred[i]["labels"] else 1.0 for i in gold]))
-    return per, dict(IoU=a["IoU"], Cor=a["Cor"], empty=empty)
+    dirty = [r["iou"] for r in per.values() if not r["clean"]]
+    clean_ok = [0.0 if pred[i]["labels"] else 1.0 for i, r in per.items() if r["clean"]]
+    return per, dict(IoU=a["IoU"], Cor=a["Cor"], empty=empty,
+                     dirty_iou=float(np.mean(dirty)) if dirty else float("nan"),
+                     clean_ok=float(np.mean(clean_ok)) if clean_ok else float("nan"))
 
 
 def iou_only(gold, spans_by_id):
@@ -136,25 +140,31 @@ def main():
     conds = [c for c in ("correct", "shuffled", "no_image")
              if os.path.exists(os.path.join(args.raw_dir, f"{c}.raw.jsonl"))]
     raws = {c: load_raw(os.path.join(args.raw_dir, f"{c}.raw.jsonl")) for c in conds}
-    per_ref = None
-    print("\n[1] conditions (fixed thresholds; 'pp' = submission post-processing; "
-          "'resweep' = oracle tau/g_thr on this split, with pp)")
+    per_ref = {}
+    print("\n[1] conditions (fixed thresholds; 'raw' = trainer decode, 'pp' = submission "
+          "post-processing; 'resweep' = oracle tau/g_thr on this split, with pp)")
     print(f"{'condition':10}{'IoU raw':>9}{'IoU pp':>8}{'Cor pp':>8}{'empty':>7}"
-          f"{'dIoU vs correct [95% CI]':>28}{'  resweep IoU (tau,g)':>22}")
+          f"{'dirty':>7}{'clnOK':>7}{'dIoU(pp) vs correct [95% CI]':>30}"
+          f"{'  resweep IoU (tau,g)':>22}")
     report["conditions"] = {}
     for c in conds:
         dec = decode_all(raws[c], items, tau, g_thr)
-        _, m_raw = score(gold, dec)
+        per_raw, m_raw = score(gold, dec)
         pp = postproc(dec, texts, args.min_len, args.merge_gap)
         per, m_pp = score(gold, {i: r["labels"] for i, r in pp.items()})
         row = {"raw": m_raw, "pp": m_pp}
         ci = ""
         if c == "correct":
-            per_ref = per
-        elif per_ref is not None:
-            d = m_pp["IoU"] - report["conditions"]["correct"]["pp"]["IoU"]
-            lo, hi = eval_official.cluster_ci(per, per_ref, key="iou")
-            row["delta_iou_vs_correct"] = {"delta": d, "ci95": [lo, hi]}
+            per_ref = {"raw": per_raw, "pp": per}
+        elif per_ref:
+            for kind, per_k, m_k in (("raw", per_raw, m_raw), ("pp", per, m_pp)):
+                d = m_k["IoU"] - report["conditions"]["correct"][kind]["IoU"]
+                lo, hi = eval_official.cluster_ci(per_k, per_ref[kind], key="iou")
+                dc = m_k["Cor"] - report["conditions"]["correct"][kind]["Cor"]
+                clo, chi = eval_official.cluster_ci(per_k, per_ref[kind], key="cor")
+                row[f"delta_vs_correct_{kind}"] = {"iou": d, "iou_ci95": [lo, hi],
+                                                   "cor": dc, "cor_ci95": [clo, chi]}
+            d, (lo, hi) = row["delta_vs_correct_pp"]["iou"], row["delta_vs_correct_pp"]["iou_ci95"]
             ci = f"{d:+.4f} [{lo:+.4f}, {hi:+.4f}]"
         rs = ""
         if not args.no_resweep:
@@ -163,7 +173,8 @@ def main():
             rs = f"{v:.4f} ({bt},{bg})"
         report["conditions"][c] = row
         print(f"{c:10}{m_raw['IoU']:>9.4f}{m_pp['IoU']:>8.4f}{m_pp['Cor']:>8.4f}"
-              f"{m_pp['empty']:>7.2f}{ci:>28}{rs:>22}")
+              f"{m_pp['empty']:>7.2f}{m_pp['dirty_iou']:>7.3f}{m_pp['clean_ok']:>7.2f}"
+              f"{ci:>30}{rs:>22}")
 
     # 2. post-processing grid on `correct` ------------------------------------------
     if "correct" in raws:

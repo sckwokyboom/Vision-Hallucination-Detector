@@ -107,7 +107,7 @@ def test_sweeps_end_to_end_on_a_synthetic_dump(tmp_path, capsys):
     rep = json.load(open(tmp_path / "rep.json"))
     assert rep["conditions"]["correct"]["pp"]["IoU"] == pytest.approx(1.0)
     assert rep["conditions"]["shuffled"]["pp"]["IoU"] == pytest.approx(0.5)   # dirty missed
-    assert rep["conditions"]["shuffled"]["delta_iou_vs_correct"]["delta"] == pytest.approx(-0.5)
+    assert rep["conditions"]["shuffled"]["delta_vs_correct_pp"]["iou"] == pytest.approx(-0.5)
     assert rep["conditions"]["shuffled"]["resweep"]["IoU"] == pytest.approx(1.0)  # g_thr<=0.3 recovers
     assert rep["postproc_grid"]["min_len=4,merge_gap=2"]["IoU"] == pytest.approx(0.5)
     assert rep["transfer"]["transferred"]["IoU"] == pytest.approx(1.0)
