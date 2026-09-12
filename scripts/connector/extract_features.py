@@ -41,8 +41,19 @@ def review_body(response):
     return response.rstrip()
 
 
-def build_text(prompt, response):
+def build_text(prompt, response, single_copy=False):
+    """The fixed non-generative prompt.
+
+    Default (echo): the answer appears twice and features are read from the second
+    ("review") copy, so every judged position can attend to the whole first copy.
+    `single_copy` is the ablation control for exactly that claim: the answer appears
+    once, and every position sees only the image, the question and its own prefix.
+    The single copy sits after a newline, like the review copy, so its tokenisation —
+    and therefore the token->character alignment — is identical to the echo prompt.
+    """
     body = review_body(response)
+    if single_copy:
+        return f"Question: {prompt}\nCandidate answer:\n{body}"
     return (f"Question: {prompt}\nCandidate answer: {body}\n"
             f"Review token by token:\n{body}")
 

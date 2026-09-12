@@ -150,3 +150,52 @@ def test_multibyte_offsets_do_not_run_away(tok):
     body, rt, tok_char = locate(tok, "Q?", response)
     assert tok_char[-1][1] == len(body) == len(response)
     assert max(b for _, b in tok_char) <= len(response)
+
+
+# --------------------------------------------------------------------- single copy
+# The echo-vs-single-copy ablation swaps the prompt but must keep the alignment
+# machinery untouched: the single copy is located by the same last-occurrence search
+# and yields the same token->character offsets as the review copy would.
+
+def locate_single(tok, prompt, response):
+    ids = tok.encode(fx.build_text(prompt, response, single_copy=True).rstrip())
+    body = fx.review_body(response)
+    ans_ids, offs = fx.encode_review(tok, body)
+    pos, trim = fx.find_subseq(ids, ans_ids), 0
+    while pos < 0 and trim < 3:
+        trim += 1
+        pos = fx.find_subseq(ids, ans_ids[trim:])
+    if pos < 0:
+        return None
+    rt, tok_char = list(range(pos, pos + len(ans_ids[trim:]))), offs[trim:]
+    while rt and not body[max(0, tok_char[0][0]):max(0, tok_char[0][1])].strip():
+        rt.pop(0)
+        tok_char = tok_char[1:]
+    return ids, body, rt, [(max(0, a), max(0, b)) for a, b in tok_char]
+
+
+def test_single_copy_prompt_contains_the_answer_once():
+    echo = fx.build_text("Q?", "The car is red.")
+    single = fx.build_text("Q?", "The car is red.", single_copy=True)
+    assert echo.count("The car is red.") == 2
+    assert single.count("The car is red.") == 1
+    assert "Review token by token" not in single
+    assert single.endswith("\nThe car is red."), "the copy must follow a newline, like the review copy"
+
+
+@pytest.mark.parametrize("response", RESPONSES)
+def test_single_copy_alignment_matches_the_echo_alignment(tok, response):
+    """Same offsets, same number of judged tokens — only the context differs."""
+    _, body_s, rt_s, tc_s = locate_single(tok, "Is this a question?", response)
+    body_e, rt_e, tc_e = locate(tok, "Is this a question?", response)
+    assert body_s == body_e
+    assert tc_s == tc_e, "single-copy offsets must equal the review-copy offsets"
+    assert len(rt_s) == len(rt_e)
+
+
+@pytest.mark.parametrize("response", RESPONSES)
+def test_single_copy_is_the_only_copy_and_ends_the_prompt(tok, response):
+    ids, body, rt, tc = locate_single(tok, "Q?", response)
+    ans_ids, _ = fx.encode_review(tok, body)
+    assert rt[-1] == len(ids) - 1, "the single copy must end the prompt"
+    assert fx.find_subseq(ids[:rt[0]], ans_ids[1:]) < 0, "no earlier copy may exist"

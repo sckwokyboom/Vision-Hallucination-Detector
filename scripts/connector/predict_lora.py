@@ -105,7 +105,7 @@ def main():
 
     max_chars = int(_config_value(args, cfg, ck_args, "max_chars", 4000))
     bb = LiveBackbone(model_id, device, layers, max_side=int(ck_args.get("max_side", 768)),
-                      quant=quant)
+                      quant=quant, single_copy=bool(ck_args.get("single_copy", False)))
     inject_lora(bb.model, from_layer=int(ck_args.get("lora_from", cfg.get("lora_from", 24))),
                 r=int(ck_args.get("lora_r", cfg.get("lora_r", 16))),
                 alpha=int(ck_args.get("lora_alpha", cfg.get("lora_alpha", 32))),

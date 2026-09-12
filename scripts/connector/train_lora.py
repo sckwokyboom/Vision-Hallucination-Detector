@@ -44,10 +44,12 @@ class LiveBackbone:
     """Frozen(+LoRA) Gemma: item -> (H, V) torch tensors on device, with the autograd
     graph reaching the LoRA parameters when grad=True."""
 
-    def __init__(self, model_id, device, layers, max_side=768, quant="bf16"):
+    def __init__(self, model_id, device, layers, max_side=768, quant="bf16",
+                 single_copy=False):
         from transformers import AutoProcessor
         from PIL import Image
         self.Image = Image
+        self.single_copy = single_copy          # echo-prompt ablation control
         self.processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
         self.tok = self.processor.tokenizer
         assert getattr(self.tok, "is_fast", False), "offset mapping needs a fast tokenizer"
@@ -58,26 +60,37 @@ class LiveBackbone:
         for attr in ("image_token_id", "image_token_index"):
             self.img_tok = getattr(self.model.config, attr, None) or self.img_tok
 
-    def prepare(self, it, image_dir):
+    def prepare(self, it, image_dir, image_name=None, no_image=False):
         """Tokenise + align one item; None if it cannot be trained on (same skip rules
-        as extract_features: whitespace-only response, missing image, no alignment)."""
+        as extract_features: whitespace-only response, missing image, no alignment).
+
+        `image_name` swaps in another item's image (shuffled-image control) and
+        `no_image` drops the image from the prompt (no-image control); both are
+        eval-time knobs for eval_ablation.py and never used in training.
+        """
         body = review_body(it.response)
         if not body.strip():
             return None
-        img_path = os.path.join(image_dir, it.image_name)
-        if not os.path.exists(img_path):
-            return None
-        image = self.Image.open(img_path).convert("RGB")
-        w, h = image.size
-        if max(w, h) > self.max_side:
-            s = self.max_side / max(w, h)
-            image = image.resize((int(w * s), int(h * s)))
-        text = build_text(it.prompt, it.response)
+        image = None
+        if not no_image:
+            img_path = os.path.join(image_dir, image_name or it.image_name)
+            if not os.path.exists(img_path):
+                return None
+            image = self.Image.open(img_path).convert("RGB")
+            w, h = image.size
+            if max(w, h) > self.max_side:
+                s = self.max_side / max(w, h)
+                image = image.resize((int(w * s), int(h * s)))
+        text = build_text(it.prompt, it.response, single_copy=self.single_copy)
+        content = ([{"type": "image"}] if image is not None else []) + \
+                  [{"type": "text", "text": text}]
         templ = self.processor.apply_chat_template(
-            [{"role": "user", "content": [{"type": "image"},
-                                          {"type": "text", "text": text}]}],
+            [{"role": "user", "content": content}],
             tokenize=False, add_generation_prompt=False)
-        inputs = self.processor(text=templ, images=image, return_tensors="pt")
+        if image is not None:
+            inputs = self.processor(text=templ, images=image, return_tensors="pt")
+        else:
+            inputs = self.processor(text=templ, return_tensors="pt")
         ids = inputs["input_ids"][0].tolist()
         ans_ids, offs = encode_review(self.tok, body)
         pos, trim = find_subseq(ids, ans_ids), 0
@@ -255,6 +268,9 @@ def main():
     ap.add_argument("--max_chars", type=int, default=4000)
     ap.add_argument("--device", default="cuda:0")
     ap.add_argument("--init_from", default=None, help="warm-start decoder from a checkpoint")
+    ap.add_argument("--single_copy", action="store_true",
+                    help="ablation: the answer appears ONCE in the prompt (no review copy), "
+                         "so features are strictly causal; everything else identical")
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
@@ -284,7 +300,10 @@ def main():
         ev = ev[:args.max_eval]
     print(f"[data] train={len(tr)} tune_dev={len(ev)} (heldout untouched)", flush=True)
 
-    bb = LiveBackbone(args.model_id, args.device, layers)
+    bb = LiveBackbone(args.model_id, args.device, layers, single_copy=args.single_copy)
+    if args.single_copy:
+        print("[prompt] SINGLE-COPY control: no review copy, strictly causal features",
+              flush=True)
     wrapped = inject_lora(bb.model, from_layer=args.lora_from, r=args.lora_r,
                           alpha=args.lora_alpha, dropout=args.lora_dropout)
     set_lora_training(bb.model, False)
@@ -315,7 +334,7 @@ def main():
 
     frozen_run = args.freeze_lora_epochs >= args.epochs      # continuation control: no LoRA ever
     tag = (f"lora_{args.arch}{'_cascade' if args.cascade_train else ''}"
-           f"{'_frozen' if frozen_run else ''}"
+           f"{'_frozen' if frozen_run else ''}{'_single' if args.single_copy else ''}"
            f"_f{args.lora_from}_r{args.lora_r}_s{args.seed}")
     best_iou, best_path, t0 = -1.0, None, time.time()
     rng = np.random.default_rng(args.seed)
