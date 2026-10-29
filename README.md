@@ -1,5 +1,9 @@
 # Vision Hallucination Detector
 
+**Paper:** [Sckwoky at SHROOM-Visions: Character-Level Hallucination-Span Detection in
+Image-Conditioned VLMs via Dual-Prompted LoRA Decoders](https://aclanthology.org/2026.uncertainlp-main.61/)
+(UncertaiNLP 2026) · **[Read the PDF](docs/paper.pdf)**
+
 Detecting and classifying **hallucination spans in image-conditioned VLM outputs** — a
 reproducible evaluation harness and a set of model experiments for the
 [SHROOM-visions 2026](https://helsinki-nlp.github.io/shroom/2026) shared task.
@@ -138,3 +142,23 @@ baselines. Please don't commit dataset content.
 
 Data and task: [SHROOM-visions 2026](https://helsinki-nlp.github.io/shroom/2026)
 (Helsinki-NLP). Licensed under [MIT](LICENSE).
+
+## Citation
+
+If you use this work, please cite our paper:
+
+```bibtex
+@inproceedings{mikhail-etal-2026-sckwoky,
+  title     = {Sckwoky at {SHROOM}-Visions: Character-Level Hallucination-Span Detection in Image-Conditioned {VLM}s via Dual-Prompted {LoRA} Decoders},
+  author    = {Kulakov, Mikhail and Solikhov, Ruslan and Bondarenko, Ivan},
+  booktitle = {The Proceedings of the Third Workshop on Uncertainty-Aware {NLP}},
+  month     = oct,
+  year      = {2026},
+  address   = {Budapest, Hungary},
+  pages     = {849--855},
+  publisher = {Association for Computational Linguistics},
+  url       = {https://aclanthology.org/2026.uncertainlp-main.61/}
+}
+```
+
+The [paper](docs/paper.pdf) is distributed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
